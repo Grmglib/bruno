@@ -14,7 +14,17 @@ const config = {
       to: 'data/sample-collection.json'
     }
   ],
-  files: ['**/*'],
+  files: [
+    '**/*',
+    '!dist/**',
+    '!out/**',
+    '!tests/**',
+    '!test/**',
+    '!**/*.map',
+    '!**/*.ts',
+    '!**/electron-builder-config.js',
+    '!**/notarize.js'
+  ],
   afterSign: 'notarize.js',
   mac: {
     artifactName: '${name}_${version}_${arch}_${os}.${ext}',
@@ -101,6 +111,7 @@ const config = {
       }
     ],
     sign: null,
+    signAndEditExecutable: false,
     publisherName: 'Bruno Software Inc'
   },
   nsis: {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import classnames from 'classnames';
 import { useDispatch } from 'react-redux';
 import { useDrop } from 'react-dnd';
@@ -23,6 +23,12 @@ import {
   renameCollectionGroupAction
 } from 'providers/ReduxStore/slices/workspaces/actions';
 import { normalizePath } from 'utils/common/path';
+import { pluralizeWord } from 'utils/common';
+
+const GROUP_DELETE_MODE = {
+  MOVE_TO_ROOT: 'move-to-root',
+  DELETE_ALL: 'delete-all'
+};
 
 const getCollapsedStorageKey = (workspaceUid, groupUid) => {
   return `bruno:collection-group-collapsed:${workspaceUid}:${groupUid}`;
@@ -45,6 +51,13 @@ const CollectionGroup = ({
   const [showManageCollectionsModal, setShowManageCollectionsModal] = useState(false);
   const [renameValue, setRenameValue] = useState(group.name);
   const [isSaving, setIsSaving] = useState(false);
+  const [groupDeleteMode, setGroupDeleteMode] = useState(GROUP_DELETE_MODE.MOVE_TO_ROOT);
+
+  const collectionsInFolder = useMemo(() => {
+    return (workspaceCollections || []).filter((collection) => collection.group === group.uid);
+  }, [workspaceCollections, group.uid]);
+
+  const deleteCollections = groupDeleteMode === GROUP_DELETE_MODE.DELETE_ALL;
 
   useEffect(() => {
     try {
@@ -138,7 +151,7 @@ const CollectionGroup = ({
 
   const handleDelete = () => {
     setIsSaving(true);
-    dispatch(deleteCollectionGroupAction(workspaceUid, group.uid))
+    dispatch(deleteCollectionGroupAction(workspaceUid, group.uid, { deleteCollections }))
       .then(() => setShowDeleteModal(false))
       .catch(() => {})
       .finally(() => setIsSaving(false));
@@ -296,9 +309,64 @@ const CollectionGroup = ({
           handleConfirm={handleDelete}
           handleCancel={() => setShowDeleteModal(false)}
         >
-          <p>
-            Delete folder <strong>{group.name}</strong>? Collections inside will move to the root level.
+          <p className="modal-description">
+            Are you sure you want to delete folder <strong>{group.name}</strong>?
           </p>
+
+          {collectionsInFolder.length > 0 && (
+            <>
+              <p className="folder-summary">
+                This folder contains <span className="font-medium">{collectionsInFolder.length}</span>{' '}
+                {pluralizeWord('collection', collectionsInFolder.length)}.
+              </p>
+
+              <div className="removal-options">
+                <label className={`removal-option ${groupDeleteMode === GROUP_DELETE_MODE.MOVE_TO_ROOT ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="groupDeleteMode"
+                    value={GROUP_DELETE_MODE.MOVE_TO_ROOT}
+                    checked={groupDeleteMode === GROUP_DELETE_MODE.MOVE_TO_ROOT}
+                    onChange={() => setGroupDeleteMode(GROUP_DELETE_MODE.MOVE_TO_ROOT)}
+                  />
+                  <div>
+                    <div className="removal-option-title">Move collections to workspace root</div>
+                    <div className="removal-option-description">
+                      Keep all collections and remove only the folder structure.
+                    </div>
+                  </div>
+                </label>
+
+                <label className={`removal-option ${groupDeleteMode === GROUP_DELETE_MODE.DELETE_ALL ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="groupDeleteMode"
+                    value={GROUP_DELETE_MODE.DELETE_ALL}
+                    checked={groupDeleteMode === GROUP_DELETE_MODE.DELETE_ALL}
+                    onChange={() => setGroupDeleteMode(GROUP_DELETE_MODE.DELETE_ALL)}
+                  />
+                  <div>
+                    <div className="removal-option-title">Delete folder and all collections inside</div>
+                    <div className="removal-option-description">
+                      Permanently delete the folder and every collection it contains.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {groupDeleteMode === GROUP_DELETE_MODE.DELETE_ALL && (
+                <p className="warning-text">
+                  This action cannot be undone. All collections inside this folder will be permanently deleted from disk.
+                </p>
+              )}
+            </>
+          )}
+
+          {collectionsInFolder.length === 0 && (
+            <p className="folder-summary">
+              This folder is empty and will be removed.
+            </p>
+          )}
         </Modal>
       )}
     </StyledWrapper>

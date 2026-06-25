@@ -2,7 +2,6 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import {
   IconBox,
-  IconTrash,
   IconEdit,
   IconShare,
   IconDots,
@@ -19,7 +18,6 @@ import { normalizePath } from 'utils/common/path';
 import toast from 'react-hot-toast';
 import RenameCollection from 'components/Sidebar/Collections/Collection/RenameCollection';
 import RemoveCollection from 'components/Sidebar/Collections/Collection/RemoveCollection';
-import DeleteCollection from 'components/Sidebar/Collections/Collection/DeleteCollection';
 import ShareCollection from 'components/ShareCollection';
 import Dropdown from 'components/Dropdown';
 import StatusBadge from 'ui/StatusBadge';
@@ -34,7 +32,6 @@ const CollectionsList = ({ workspace }) => {
 
   const [renameCollectionModalOpen, setRenameCollectionModalOpen] = useState(false);
   const [removeCollectionModalOpen, setRemoveCollectionModalOpen] = useState(false);
-  const [deleteCollectionModalOpen, setDeleteCollectionModalOpen] = useState(false);
   const [shareCollectionModalOpen, setShareCollectionModalOpen] = useState(false);
   const [selectedCollectionUid, setSelectedCollectionUid] = useState(null);
   const [gitTarget, setGitTarget] = useState(null);
@@ -163,16 +160,6 @@ const CollectionsList = ({ workspace }) => {
     setRemoveCollectionModalOpen(true);
   };
 
-  const handleDeleteCollection = (collection) => {
-    dropdownRefs.current[collection.uid]?.hide();
-    if (collection.isLoaded === false) {
-      toast.error('Cannot delete collections that are not loaded');
-      return;
-    }
-    setSelectedCollectionUid(collection.uid);
-    setDeleteCollectionModalOpen(true);
-  };
-
   const handleShowInFolder = (collection) => {
     dropdownRefs.current[collection.uid]?.hide();
     dispatch(showInFolder(collection.pathname)).catch((error) => {
@@ -239,17 +226,6 @@ const CollectionsList = ({ workspace }) => {
           collectionUid={selectedCollectionUid}
           onClose={() => {
             setRemoveCollectionModalOpen(false);
-            setSelectedCollectionUid(null);
-          }}
-        />
-      )}
-
-      {deleteCollectionModalOpen && selectedCollectionUid && (
-        <DeleteCollection
-          collectionUid={selectedCollectionUid}
-          workspaceUid={workspace.uid}
-          onClose={() => {
-            setDeleteCollectionModalOpen(false);
             setSelectedCollectionUid(null);
           }}
         />
@@ -411,16 +387,6 @@ const CollectionsList = ({ workspace }) => {
                     >
                       <IconX size={16} strokeWidth={1.5} />
                       <span>Remove</span>
-                    </div>
-                    <div
-                      className="dropdown-item delete-item"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteCollection(collection);
-                      }}
-                    >
-                      <IconTrash size={16} strokeWidth={1.5} />
-                      <span>Delete</span>
                     </div>
                   </div>
                 </Dropdown>

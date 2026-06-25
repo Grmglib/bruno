@@ -1148,7 +1148,8 @@ export const pasteItem = (targetCollectionUid, targetItemUid = null) => (dispatc
   });
 };
 
-export const deleteItem = (itemUid, collectionUid) => (dispatch, getState) => {
+export const deleteItem = (itemUid, collectionUid, options = {}) => (dispatch, getState) => {
+  const { moveRequestsToRoot = false } = options;
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
 
@@ -1163,9 +1164,22 @@ export const deleteItem = (itemUid, collectionUid) => (dispatch, getState) => {
       const { ipcRenderer } = window;
 
       ipcRenderer
-        .invoke('renderer:delete-item', item.pathname, item.type, collection.pathname)
+        .invoke('renderer:delete-item', item.pathname, item.type, collection.pathname, { moveRequestsToRoot })
         .then(async () => {
-          // Reorder items in parent directory after deletion
+          if (item.type === 'folder' && moveRequestsToRoot) {
+            const updatedCollection = findCollectionByUid(getState().collections.collections, collectionUid);
+            if (updatedCollection?.items?.length) {
+              const requestAndFolderTypes = [...REQUEST_TYPES, 'folder'];
+              const rootItems = updatedCollection.items.filter((i) => requestAndFolderTypes.includes(i.type));
+              const reorderedRootItems = getReorderedItemsInSourceDirectory({
+                items: rootItems
+              });
+              if (reorderedRootItems?.length) {
+                await dispatch(updateItemsSequences({ itemsToResequence: reorderedRootItems, collectionUid }));
+              }
+            }
+          }
+
           if (parentDirectoryItem.items) {
             const requestAndFolderTypes = [...REQUEST_TYPES, 'folder'];
             const directoryItemsWithOnlyRequestAndFolders = parentDirectoryItem.items.filter((i) => requestAndFolderTypes.includes(i.type));
@@ -2549,8 +2563,9 @@ export const selectEnvironment = (environmentUid, collectionUid) => (dispatch, g
   });
 };
 
-export const removeCollection = (collectionUid) => (dispatch, getState) => {
+export const removeCollection = (collectionUid, options = {}) => (dispatch, getState) => {
   return new Promise((resolve, reject) => {
+    const { deleteFiles = false } = options;
     const state = getState();
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
     if (!collection) {
@@ -2572,7 +2587,7 @@ export const removeCollection = (collectionUid) => (dispatch, getState) => {
     }
 
     ipcRenderer
-      .invoke('renderer:remove-collection', collection.pathname, collectionUid, workspaceId)
+      .invoke('renderer:remove-collection', collection.pathname, collectionUid, workspaceId, { deleteFiles })
       .then(() => {
         // Check if the collection still exists in other workspaces
         return ipcRenderer.invoke('renderer:get-collection-workspaces', collection.pathname);

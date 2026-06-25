@@ -441,21 +441,48 @@ const deleteCollectionFromOverview = async (page: Page, collectionName: string) 
     await collectionCard.waitFor({ state: 'visible', timeout: 5000 });
     await collectionCard.locator('.collection-menu').click();
 
-    // Click Delete from the dropdown
-    await page.locator('.dropdown-item').filter({ hasText: 'Delete' }).click();
+    // Click Remove from the dropdown
+    await page.locator('.dropdown-item').filter({ hasText: 'Remove' }).click();
 
-    // Wait for delete confirmation modal
-    const deleteModal = page.locator('.bruno-modal').filter({ hasText: 'Delete Collection' });
-    await deleteModal.waitFor({ state: 'visible', timeout: 5000 });
+    // Wait for remove confirmation modal
+    const removeModal = page.locator('.bruno-modal').filter({ hasText: 'Remove Collection' });
+    await removeModal.waitFor({ state: 'visible', timeout: 5000 });
 
-    // Type 'delete' to confirm
-    await deleteModal.locator('#delete-confirm-input').fill('delete');
+    // Select delete files option
+    await removeModal.locator('input[value="delete-files"]').check();
 
     // Click the Delete button
-    await deleteModal.getByRole('button', { name: 'Delete', exact: true }).click();
+    await removeModal.getByRole('button', { name: 'Delete', exact: true }).click();
 
     // Wait for modal to close
-    await deleteModal.waitFor({ state: 'hidden', timeout: 10000 });
+    await removeModal.waitFor({ state: 'hidden', timeout: 10000 });
+  });
+};
+
+/**
+ * Remove a collection from Bruno only via the workspace overview page
+ * @param page - The page object
+ * @param collectionName - The name of the collection to remove
+ * @returns void
+ */
+const removeCollectionFromOverview = async (page: Page, collectionName: string) => {
+  await test.step(`Remove collection "${collectionName}" from workspace overview`, async () => {
+    await page.locator('.home-button').click();
+    const overviewTab = page.locator('.request-tab').filter({ hasText: 'Overview' });
+    await overviewTab.click();
+
+    const collectionCard = page.locator('.collection-card').filter({ hasText: collectionName });
+    await collectionCard.waitFor({ state: 'visible', timeout: 5000 });
+    await collectionCard.locator('.collection-menu').click();
+
+    await page.locator('.dropdown-item').filter({ hasText: 'Remove' }).click();
+
+    const removeModal = page.locator('.bruno-modal').filter({ hasText: 'Remove Collection' });
+    await removeModal.waitFor({ state: 'visible', timeout: 5000 });
+
+    await removeModal.getByRole('button', { name: 'Remove', exact: true }).click();
+
+    await removeModal.waitFor({ state: 'hidden', timeout: 10000 });
   });
 };
 
@@ -2147,6 +2174,7 @@ export {
   fillRequestUrl,
   deleteRequest,
   deleteCollectionFromOverview,
+  removeCollectionFromOverview,
   importCollection,
   removeCollection,
   createFolder,

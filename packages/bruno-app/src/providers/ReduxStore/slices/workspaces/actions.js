@@ -8,10 +8,9 @@ import {
   updateWorkspaceLoadingState,
   setWorkspaceScratchCollection
 } from '../workspaces';
-import { createCollection, openCollection, openMultipleCollections, openScratchCollectionEvent, mountCollection, ensureActiveTabInCurrentWorkspace } from '../collections/actions';
+import { createCollection, openCollection, openMultipleCollections, openScratchCollectionEvent, mountCollection, ensureActiveTabInCurrentWorkspace, removeCollection as removeCollectionAction } from '../collections/actions';
 import { removeCollection, addTransientDirectory, updateCollectionMountStatus, expandCollection, sortCollections } from '../collections';
 import { sanitizeName } from 'utils/common/regex';
-import { clearCollectionState } from '../openapi-sync';
 import { updateGlobalEnvironments } from '../global-environments';
 import { addTab, restoreTabs, closeAllCollectionTabs } from '../tabs';
 import {
@@ -309,7 +308,6 @@ export const disconnectCollectionFromGit = ({ workspaceUid, collectionPath }) =>
 export const removeCollectionFromWorkspaceAction = (workspaceUid, collectionPath, options = {}) => {
   return async (dispatch, getState) => {
     try {
-      const { deleteFiles = false } = options;
       const workspacesState = getState().workspaces;
       const collectionsState = getState().collections;
       const workspace = workspacesState.workspaces.find((w) => w.uid === workspaceUid);
@@ -324,22 +322,17 @@ export const removeCollectionFromWorkspaceAction = (workspaceUid, collectionPath
         (c) => normalizePath(c.pathname) === normalizedCollectionPath
       );
 
+      if (collection) {
+        return dispatch(removeCollectionAction(collection.uid, options));
+      }
+
+      const { deleteFiles = false } = options;
+
       await ipcRenderer.invoke('renderer:remove-collection-from-workspace',
         workspaceUid,
         workspace.pathname,
         collectionPath,
         { deleteFiles });
-
-      if (collection) {
-        const workspaceCollection = workspace.collections?.find(
-          (wc) => normalizePath(wc.path) === normalizedCollectionPath
-        );
-
-        if (workspaceCollection) {
-          dispatch(removeCollection({ collectionUid: collection.uid }));
-          dispatch(clearCollectionState({ collectionUid: collection.uid }));
-        }
-      }
 
       dispatch(removeCollectionFromWorkspace({
         workspaceUid,
@@ -1472,21 +1465,47 @@ export const renameCollectionGroupAction = (workspaceUid, groupUid, name) => {
   };
 };
 
-export const deleteCollectionGroupAction = (workspaceUid, groupUid) => {
+const removeCollectionsAfterGroupDelete = (deletedCollections) => {
   return async (dispatch, getState) => {
+    if (!deletedCollections?.length) {
+      return;
+    }
+
+    for (const { path: collectionPath } of deletedCollections) {
+      const collection = findCollectionByPathname(getState().collections.collections, collectionPath);
+      if (collection) {
+        dispatch(closeAllCollectionTabs({ collectionUid: collection.uid }));
+        dispatch(removeCollection({ collectionUid: collection.uid }));
+      }
+    }
+
+    dispatch(ensureActiveTabInCurrentWorkspace());
+  };
+};
+
+export const deleteCollectionGroupAction = (workspaceUid, groupUid, options = {}) => {
+  return async (dispatch, getState) => {
+    const { deleteCollections = false } = options;
     const workspace = getWorkspaceByUid(getState(), workspaceUid);
     if (!workspace?.pathname) {
       throw new Error('Workspace not found');
     }
 
     try {
-      const { relocations } = await ipcRenderer.invoke(
+      const { relocations, deletedCollections } = await ipcRenderer.invoke(
         'renderer:delete-collection-group',
         workspace.pathname,
-        groupUid
+        groupUid,
+        { deleteCollections }
       );
-      await dispatch(relocateCollectionsAfterGroupChange(relocations || [], workspace.pathname));
-      toast.success('Folder deleted');
+
+      if (deleteCollections) {
+        await dispatch(removeCollectionsAfterGroupDelete(deletedCollections || []));
+        toast.success('Folder and collections deleted');
+      } else {
+        await dispatch(relocateCollectionsAfterGroupChange(relocations || [], workspace.pathname));
+        toast.success('Folder deleted');
+      }
     } catch (error) {
       toast.error(error.message || 'Failed to delete folder');
       throw error;

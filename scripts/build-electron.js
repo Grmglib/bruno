@@ -68,8 +68,9 @@ async function execCommandWithOutput(command) {
 
 async function main() {
   try {
-    // Remove out directory
+    // Remove out and dist directories from previous builds
     await deleteFileIfExists('packages/bruno-electron/out');
+    await deleteFileIfExists('packages/bruno-electron/dist');
 
     // Remove web directory
     await deleteFileIfExists('packages/bruno-electron/web');

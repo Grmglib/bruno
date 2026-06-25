@@ -3,9 +3,8 @@ import filter from 'lodash/filter';
 import { useDispatch, useSelector } from 'react-redux';
 import { flattenItems, isItemARequest, hasRequestChanges, findCollectionByUid } from 'utils/collections';
 import { pluralizeWord } from 'utils/common';
-import { saveRequest, saveMultipleRequests } from 'providers/ReduxStore/slices/collections/actions';
+import { saveRequest, saveMultipleRequests, removeCollection } from 'providers/ReduxStore/slices/collections/actions';
 import { deleteRequestDraft } from 'providers/ReduxStore/slices/collections';
-import { removeCollection } from 'providers/ReduxStore/slices/collections/actions';
 import { IconAlertTriangle, IconDeviceFloppy } from '@tabler/icons';
 import Modal from 'components/Modal';
 import toast from 'react-hot-toast';
@@ -14,7 +13,7 @@ import StyledWrapper from './StyledWrapper';
 
 const MAX_UNSAVED_REQUESTS_TO_SHOW = 5;
 
-const ConfirmCollectionCloseDrafts = ({ onClose, collection, collectionUid }) => {
+const ConfirmCollectionCloseDrafts = ({ onClose, collection, collectionUid, deleteFiles = false }) => {
   const dispatch = useDispatch();
 
   const latestCollection = useSelector((state) => findCollectionByUid(state.collections.collections, collectionUid));
@@ -51,39 +50,44 @@ const ConfirmCollectionCloseDrafts = ({ onClose, collection, collectionUid }) =>
     return [...currentDrafts, ...currentTransientDrafts];
   }, [currentDrafts, currentTransientDrafts]);
 
+  const getSuccessMessage = () => {
+    if (deleteFiles) {
+      return `Deleted "${activeCollection.name}" collection`;
+    }
+
+    return 'Collection removed from workspace';
+  };
+
+  const removeCollectionWithOptions = () => {
+    return dispatch(removeCollection(collectionUid, { deleteFiles }))
+      .then(() => {
+        toast.success(getSuccessMessage());
+        onClose();
+      })
+      .catch((error) => {
+        toast.error(error?.message || 'An error occurred while removing the collection');
+      });
+  };
+
   const handleSaveAll = () => {
-    // If there are transient drafts, we can't proceed with batch save
     if (currentTransientDrafts.length > 0) {
       toast.error('Please save or discard transient requests first');
       return;
     }
-    // Save only non-transient drafts
+
     if (currentDrafts.length > 0) {
       dispatch(saveMultipleRequests(currentDrafts))
-        .then(() => {
-          dispatch(removeCollection(collectionUid))
-            .then(() => {
-              toast.success('Collection removed from workspace');
-              onClose();
-            })
-            .catch(() => toast.error('An error occurred while removing the collection'));
-        })
+        .then(() => removeCollectionWithOptions())
         .catch(() => {
           toast.error('Failed to save requests!');
         });
-    } else {
-      // No non-transient drafts, just remove the collection
-      dispatch(removeCollection(collectionUid))
-        .then(() => {
-          toast.success('Collection removed from workspace');
-          onClose();
-        })
-        .catch(() => toast.error('An error occurred while removing the collection'));
+      return;
     }
+
+    removeCollectionWithOptions();
   };
 
   const handleDiscardAll = () => {
-    // Discard all drafts (both regular and transient)
     allDrafts.forEach((draft) => {
       dispatch(deleteRequestDraft({
         collectionUid: collectionUid,
@@ -91,13 +95,7 @@ const ConfirmCollectionCloseDrafts = ({ onClose, collection, collectionUid }) =>
       }));
     });
 
-    // Then remove the collection
-    dispatch(removeCollection(collectionUid))
-      .then(() => {
-        toast.success('Collection removed from workspace');
-        onClose();
-      })
-      .catch(() => toast.error('An error occurred while removing the collection'));
+    removeCollectionWithOptions();
   };
 
   const handleSaveTransient = (draft) => {
@@ -107,6 +105,8 @@ const ConfirmCollectionCloseDrafts = ({ onClose, collection, collectionUid }) =>
   if (!currentDrafts.length && !currentTransientDrafts.length) {
     return null;
   }
+
+  const removeActionLabel = deleteFiles ? 'Delete' : 'Remove';
 
   return (
     <StyledWrapper>
@@ -130,7 +130,12 @@ const ConfirmCollectionCloseDrafts = ({ onClose, collection, collectionUid }) =>
           {pluralizeWord('request', allDrafts.length)}.
         </p>
 
-        {/* Regular (saved) requests with changes */}
+        {deleteFiles && (
+          <p className="warning-text mt-3">
+            Unsaved changes will be lost. The collection files will be permanently deleted from disk.
+          </p>
+        )}
+
         {currentDrafts.length > 0 && (
           <div className="mt-4">
             <p className="text-sm font-medium mb-2">
@@ -154,7 +159,6 @@ const ConfirmCollectionCloseDrafts = ({ onClose, collection, collectionUid }) =>
           </div>
         )}
 
-        {/* Transient (unsaved) requests */}
         {currentTransientDrafts.length > 0 && (
           <div className="mt-4">
             <p className="text-sm font-medium mb-2">
@@ -190,7 +194,7 @@ const ConfirmCollectionCloseDrafts = ({ onClose, collection, collectionUid }) =>
         <div className="flex justify-between mt-6">
           <div>
             <Button color="danger" onClick={handleDiscardAll}>
-              Discard All and Remove
+              Discard All and {removeActionLabel}
             </Button>
           </div>
           <div>

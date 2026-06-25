@@ -85,8 +85,10 @@ const {
   validateWorkspacePath,
   normalizeCollectionEntry,
   addCollectionToWorkspace,
-  removeCollectionFromWorkspace
+  removeCollectionFromWorkspace,
+  getWorkspacesWithCollection
 } = require('../utils/workspace-config');
+const LastOpenedWorkspaces = require('../store/last-opened-workspaces');
 
 const environmentSecretsStore = new EnvironmentSecretsStore();
 const collectionSecurityStore = new CollectionSecurityStore();
@@ -104,6 +106,30 @@ const getTransientDirectoryBase = () => {
 // Get the prefix used for transient collection directories
 const getTransientCollectionPrefix = () => {
   return path.join(getTransientDirectoryBase(), 'bruno-');
+};
+
+const FOLDER_METADATA_FILES = new Set(['folder.bru', 'folder.yml']);
+
+const moveFolderRequestsToCollectionRoot = async (folderPath, collectionPathname) => {
+  const requestFiles = (await searchForRequestFiles(folderPath, collectionPathname))
+    .filter((filePath) => !FOLDER_METADATA_FILES.has(path.basename(filePath)));
+
+  for (const requestFile of requestFiles) {
+    const ext = path.extname(requestFile);
+    const basename = path.basename(requestFile);
+    let targetPath = path.join(collectionPathname, basename);
+
+    if (fs.existsSync(targetPath)) {
+      const baseNameWithoutExt = path.basename(requestFile, ext);
+      const uniqueBaseName = generateUniqueName(baseNameWithoutExt, (name) =>
+        fs.existsSync(path.join(collectionPathname, `${name}${ext}`))
+      );
+      targetPath = path.join(collectionPathname, `${uniqueBaseName}${ext}`);
+    }
+
+    moveRequestUid(requestFile, targetPath);
+    await fsExtra.move(requestFile, targetPath, { overwrite: false });
+  }
 };
 
 // Get the prefix used for scratch collection directories
@@ -1149,17 +1175,22 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
   });
 
   // delete file/folder
-  ipcMain.handle('renderer:delete-item', async (event, pathname, type, collectionPathname) => {
+  ipcMain.handle('renderer:delete-item', async (event, pathname, type, collectionPathname, options = {}) => {
+    const { moveRequestsToRoot = false } = options;
+
     try {
       if (type === 'folder') {
         if (!fs.existsSync(pathname)) {
           return Promise.reject(new Error('The directory does not exist'));
         }
 
-        // delete the request uid mappings
-        const requestFilesAtSource = await searchForRequestFiles(pathname, collectionPathname);
-        for (let requestFile of requestFilesAtSource) {
-          deleteRequestUid(requestFile);
+        if (moveRequestsToRoot) {
+          await moveFolderRequestsToCollectionRoot(pathname, collectionPathname);
+        } else {
+          const requestFilesAtSource = await searchForRequestFiles(pathname, collectionPathname);
+          for (let requestFile of requestFilesAtSource) {
+            deleteRequestUid(requestFile);
+          }
         }
 
         fs.rmSync(pathname, { recursive: true, force: true });
@@ -1261,7 +1292,9 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
     }
   });
 
-  ipcMain.handle('renderer:remove-collection', async (event, collectionPath, collectionUid, workspacePath) => {
+  ipcMain.handle('renderer:remove-collection', async (event, collectionPath, collectionUid, workspacePath, options = {}) => {
+    const { deleteFiles = false } = options;
+
     if (watcher && mainWindow) {
       watcher.removeWatcher(collectionPath, mainWindow, collectionUid);
 
@@ -1289,6 +1322,19 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       cleanupSpecFilesForCollection(collectionPath);
     } catch (error) {
       console.error('Error cleaning up spec files for removed collection:', error);
+    }
+
+    if (deleteFiles) {
+      const lastOpenedWorkspaces = new LastOpenedWorkspaces();
+      const remainingWorkspaces = getWorkspacesWithCollection(collectionPath, lastOpenedWorkspaces.getAll());
+
+      if (remainingWorkspaces.length > 0) {
+        throw new Error('Collection is linked to other workspaces and cannot be deleted from disk');
+      }
+
+      if (fs.existsSync(collectionPath)) {
+        await fsExtra.remove(collectionPath);
+      }
     }
   });
 

@@ -21,6 +21,7 @@ const {
   updateWorkspaceDocs,
   addCollectionToWorkspace,
   removeCollectionFromWorkspace,
+  getWorkspacesWithCollection,
   setCollectionGitRemote,
   clearCollectionGitRemote,
   reorderWorkspaceCollections,
@@ -228,20 +229,22 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) =
     }
   });
 
-  ipcMain.handle('renderer:delete-collection-group', async (event, workspacePath, groupUid) => {
+  ipcMain.handle('renderer:delete-collection-group', async (event, workspacePath, groupUid, options = {}) => {
     try {
       validateWorkspacePath(workspacePath);
-      const { relocations } = await deleteCollectionGroupWithFilesystem({
+      const { deleteCollections = false } = options;
+      const { relocations, deletedCollections } = await deleteCollectionGroupWithFilesystem({
         workspacePath,
         groupUid,
         watcher: collectionWatcher,
-        mainWindow
+        mainWindow,
+        options: { deleteCollections }
       });
       const config = readWorkspaceConfig(workspacePath);
       const isDefault = getWorkspaceUid(workspacePath) === 'default';
       const configForClient = prepareWorkspaceConfigForClient(config, workspacePath, isDefault);
       mainWindow.webContents.send('main:workspace-config-updated', workspacePath, getWorkspaceUid(workspacePath), configForClient);
-      return { relocations };
+      return { relocations, deletedCollections: deletedCollections || [] };
     } catch (error) {
       throw error;
     }
@@ -697,32 +700,7 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) =
   ipcMain.handle('renderer:get-collection-workspaces', async (event, collectionPath) => {
     try {
       const workspacePaths = lastOpenedWorkspaces.getAll();
-      const workspacesWithCollection = [];
-
-      for (const workspacePath of workspacePaths) {
-        try {
-          const workspaceYmlPath = path.join(workspacePath, 'workspace.yml');
-          if (fs.existsSync(workspaceYmlPath)) {
-            const workspaceConfig = yaml.load(fs.readFileSync(workspaceYmlPath, 'utf8')) || {};
-            const collections = workspaceConfig.collections || [];
-
-            const hasCollection = collections.some((c) => {
-              const resolvedPath = path.isAbsolute(c.path)
-                ? c.path
-                : path.resolve(workspacePath, c.path);
-              return resolvedPath === collectionPath;
-            });
-
-            if (hasCollection) {
-              workspacesWithCollection.push(workspacePath);
-            }
-          }
-        } catch (error) {
-          console.warn('Failed to check workspace collection:', error.message);
-        }
-      }
-
-      return workspacesWithCollection;
+      return getWorkspacesWithCollection(collectionPath, workspacePaths);
     } catch (error) {
       return [];
     }

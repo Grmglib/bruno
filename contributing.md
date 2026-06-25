@@ -22,6 +22,8 @@
 
 We are happy that you are looking to improve Bruno. Below are the guidelines to run Bruno on your computer.
 
+> AI coding agents: see [AGENTS.md](AGENTS.md) for repository-specific guidance (architecture, conventions, and workflows).
+
 ### Technology Stack
 
 Bruno is built using React and Electron.

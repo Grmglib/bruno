@@ -480,6 +480,28 @@ describe('collection groups', () => {
     expect(fs.existsSync(absPath('collections/backend/api'))).toBe(false);
   });
 
+  test('deleteCollectionGroup deletes collections from disk when deleteCollections is true', async () => {
+    writeWorkspaceYml({
+      collectionGroups: [{ uid: 'g1', name: 'Backend', path: 'collections/backend' }],
+      collections: [collection('API', 'collections/backend/api', { group: 'g1' })]
+    });
+    fs.mkdirSync(absPath('collections/backend'), { recursive: true });
+    createMockCollectionDir('collections/backend/api', 'API');
+
+    const { deletedCollections } = await deleteCollectionGroupWithFilesystem({
+      workspacePath,
+      groupUid: 'g1',
+      options: { deleteCollections: true }
+    });
+
+    const config = readWorkspaceConfig(workspacePath);
+    expect(config.collectionGroups).toEqual([]);
+    expect(config.collections).toEqual([]);
+    expect(deletedCollections).toHaveLength(1);
+    expect(fs.existsSync(absPath('collections/backend/api'))).toBe(false);
+    expect(fs.existsSync(absPath('collections/backend'))).toBe(false);
+  });
+
   test('assignCollectionToGroup moves collection into and out of group folders', async () => {
     writeWorkspaceYml({
       collectionGroups: [{ uid: 'g1', name: 'Backend', path: 'collections/backend' }],

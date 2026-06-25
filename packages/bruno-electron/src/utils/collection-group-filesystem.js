@@ -156,6 +156,60 @@ const performCollectionDirectoryMove = async ({
   return { moved: true, oldPath: sourcePath, newPath: destPath, wasOpen };
 };
 
+const performCollectionDirectoryDelete = async ({
+  collectionPath,
+  collectionUid,
+  watcher,
+  mainWindow,
+  workspacePath
+}) => {
+  const wasOpen = Boolean(watcher?.hasWatcher?.(collectionPath));
+
+  if (watcher && mainWindow) {
+    watcher.removeWatcher(collectionPath, mainWindow, collectionUid);
+
+    if (wsClient) {
+      wsClient.closeForCollection(collectionUid);
+    }
+  }
+
+  await require('../ipc/mount').unmount(collectionUid).catch(() => {});
+
+  const { clearCollectionWorkspace } = require('../store/process-env');
+  clearCollectionWorkspace(collectionUid);
+
+  try {
+    const { cleanupSpecFilesForCollection } = require('../ipc/openapi-sync');
+    cleanupSpecFilesForCollection(collectionPath);
+  } catch (error) {
+    console.error('Error cleaning up spec files for deleted collection:', error);
+  }
+
+  try {
+    await removeCollectionFromWorkspaceGitignore(workspacePath, collectionPath);
+  } catch (error) {
+    console.error('Error updating gitignore after collection delete:', error);
+  }
+
+  if (fs.existsSync(collectionPath)) {
+    await fsExtra.remove(collectionPath);
+  }
+
+  try {
+    const LastOpenedCollections = require('../store/last-opened-collections');
+    const lastOpenedCollections = new LastOpenedCollections();
+    lastOpenedCollections.remove(collectionPath);
+  } catch (error) {
+    console.error('Error updating last opened collections after collection delete:', error);
+  }
+
+  return {
+    path: collectionPath,
+    collectionUid,
+    wasOpen
+  };
+};
+
 const computeCollectionTargetPath = async (workspacePath, collectionAbsolutePath, groupUid, config) => {
   const collectionsRoot = await ensureCollectionsRoot(workspacePath);
   const basename = path.basename(collectionAbsolutePath);
@@ -375,8 +429,10 @@ const deleteCollectionGroupWithFilesystem = async ({
   workspacePath,
   groupUid,
   watcher,
-  mainWindow
+  mainWindow,
+  options = {}
 }) => {
+  const { deleteCollections = false } = options;
   const config = readWorkspaceConfig(workspacePath);
   const group = (config.collectionGroups || []).find((g) => g.uid === groupUid);
   if (!group) {
@@ -385,6 +441,40 @@ const deleteCollectionGroupWithFilesystem = async ({
 
   const groupAbsPath = getGroupAbsolutePath(workspacePath, group);
   const collectionsInGroup = (config.collections || []).filter((c) => c.group === groupUid);
+
+  if (deleteCollections) {
+    const deletedCollections = [];
+
+    for (const collectionEntry of collectionsInGroup) {
+      const collectionPath = getNormalizedAbsoluteCollectionPath(workspacePath, collectionEntry);
+      if (!fs.existsSync(collectionPath)) {
+        continue;
+      }
+
+      const collectionUid = generateUidBasedOnHash(collectionPath);
+      const deleteResult = await performCollectionDirectoryDelete({
+        collectionPath,
+        collectionUid,
+        watcher,
+        mainWindow,
+        workspacePath
+      });
+      deletedCollections.push(deleteResult);
+    }
+
+    config.collections = (config.collections || []).filter((c) => c.group !== groupUid);
+
+    if (fs.existsSync(groupAbsPath)) {
+      await fsExtra.remove(groupAbsPath);
+    }
+
+    await deleteCollectionGroup(workspacePath, groupUid, {
+      collections: config.collections
+    });
+
+    return { relocations: [], deletedCollections };
+  }
+
   const collectionsRoot = await ensureCollectionsRoot(workspacePath);
   const relocations = [];
 

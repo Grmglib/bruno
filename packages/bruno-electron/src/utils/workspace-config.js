@@ -569,6 +569,43 @@ const clearCollectionGitRemote = async (workspacePath, collectionPath) => {
   });
 };
 
+const getWorkspacesWithCollection = (collectionPath, workspacePaths = []) => {
+  const normalizedCollectionPath = path.normalize(collectionPath);
+  const workspacesWithCollection = [];
+
+  for (const workspacePath of workspacePaths) {
+    try {
+      const workspaceYmlPath = path.join(workspacePath, 'workspace.yml');
+      if (!fs.existsSync(workspaceYmlPath)) {
+        continue;
+      }
+
+      const workspaceConfig = yaml.load(fs.readFileSync(workspaceYmlPath, 'utf8')) || {};
+      const collections = workspaceConfig.collections || [];
+
+      const hasCollection = collections.some((c) => {
+        if (!c.path) {
+          return false;
+        }
+
+        const resolvedPath = path.isAbsolute(c.path)
+          ? c.path
+          : path.resolve(workspacePath, c.path);
+
+        return path.normalize(resolvedPath) === normalizedCollectionPath;
+      });
+
+      if (hasCollection) {
+        workspacesWithCollection.push(workspacePath);
+      }
+    } catch (error) {
+      console.warn('Failed to check workspace collection:', error.message);
+    }
+  }
+
+  return workspacesWithCollection;
+};
+
 const removeCollectionFromWorkspace = async (workspacePath, collectionPath) => {
   return withLock(getWorkspaceLockKey(workspacePath), async () => {
     const config = readWorkspaceConfig(workspacePath);
@@ -937,6 +974,7 @@ module.exports = {
   updateWorkspaceDocs,
   addCollectionToWorkspace,
   removeCollectionFromWorkspace,
+  getWorkspacesWithCollection,
   setCollectionGitRemote,
   clearCollectionGitRemote,
   reorderWorkspaceCollections,
