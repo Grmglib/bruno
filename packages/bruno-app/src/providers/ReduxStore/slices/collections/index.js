@@ -14,6 +14,7 @@ import {
   findEnvironmentInCollection,
   findItemInCollection,
   findItemInCollectionByPathname,
+  flattenItems,
   isItemAFolder,
   isItemARequest
 } from 'utils/collections';
@@ -3588,6 +3589,51 @@ export const collectionsSlice = createSlice({
         }
       }
     },
+    setAllItemsAuthToInherit: (state, action) => {
+      const collection = findCollectionByUid(state.collections, action.payload.collectionUid);
+
+      if (!collection?.items?.length) {
+        return;
+      }
+
+      flattenItems(collection.items).forEach((item) => {
+        if (isItemARequest(item)) {
+          const currentMode = item.draft
+            ? get(item, 'draft.request.auth.mode')
+            : get(item, 'request.auth.mode');
+          if (currentMode === 'inherit') {
+            return;
+          }
+          if (!item.draft) {
+            item.draft = cloneDeep(item);
+          }
+          const savedAuth = get(item, 'request.auth');
+          const savedMode = get(savedAuth, 'mode');
+          if (savedMode === 'inherit') {
+            item.draft.request.auth = cloneDeep(savedAuth);
+          } else {
+            item.draft.request.auth = { mode: 'inherit' };
+          }
+        } else if (isItemAFolder(item)) {
+          const currentMode = item.draft
+            ? get(item, 'draft.request.auth.mode')
+            : get(item, 'root.request.auth.mode');
+          if (currentMode === 'inherit') {
+            return;
+          }
+          if (!item.draft) {
+            item.draft = cloneDeep(item.root);
+          }
+          const savedAuth = get(item, 'root.request.auth');
+          const savedMode = get(savedAuth, 'mode');
+          if (savedMode === 'inherit') {
+            set(item, 'draft.request.auth', cloneDeep(savedAuth));
+          } else {
+            set(item, 'draft.request.auth', { mode: 'inherit' });
+          }
+        }
+      });
+    },
     streamDataReceived: (state, action) => {
       const { itemUid, collectionUid, seq, timestamp, data } = action.payload;
       const collection = findCollectionByUid(state.collections, collectionUid);
@@ -4019,6 +4065,7 @@ export const {
   collectionClearOauth2CredentialsByCredentialsId,
   updateFolderAuth,
   updateFolderAuthMode,
+  setAllItemsAuthToInherit,
   addRequestTag,
   deleteRequestTag,
   updateCollectionTagsList,

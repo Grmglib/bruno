@@ -60,6 +60,7 @@ const actionsToIntercept = [
   'collections/updateFolderTests',
   'collections/updateFolderAuth',
   'collections/updateFolderAuthMode',
+  'collections/setAllItemsAuthToInherit',
   'collections/updateFolderDocs',
 
   // Collection-level actions

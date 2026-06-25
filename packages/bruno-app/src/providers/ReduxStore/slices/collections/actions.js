@@ -23,8 +23,10 @@ import {
   getAllVariables,
   transformRequestToSaveToFilesystem,
   transformCollectionRootToSave,
-  flattenItems
+  flattenItems,
+  isItemTransientRequest
 } from 'utils/collections';
+import { getItemsWithNonInheritAuth } from 'utils/auth';
 import { uuid, waitForNextTick } from 'utils/common';
 import { cancelNetworkRequest, connectWS, sendGrpcRequest, sendNetworkRequest, sendWsRequest } from 'utils/network/index';
 import { callIpc } from 'utils/common/ipc';
@@ -63,7 +65,8 @@ import {
   addTransientDirectory,
   addSaveTransientRequestModal,
   updatePathParam,
-  toggleCollection
+  toggleCollection,
+  setAllItemsAuthToInherit as _setAllItemsAuthToInherit
 } from './index';
 
 import { each } from 'lodash';
@@ -353,6 +356,41 @@ export const saveFolderRoot = (collectionUid, folderUid, silent = false) => (dis
         reject(err);
       });
   });
+};
+
+export const applyInheritAuthToAllItems = (collectionUid) => (dispatch, getState) => {
+  const state = getState();
+  const collection = findCollectionByUid(state.collections.collections, collectionUid);
+
+  if (!collection) {
+    return Promise.reject(new Error('Collection not found'));
+  }
+
+  const { requests, folders } = getItemsWithNonInheritAuth(collection);
+  const requestUids = requests.filter((item) => !isItemTransientRequest(item)).map((item) => item.uid);
+  const folderUids = folders.map((item) => item.uid);
+  const total = requestUids.length + folderUids.length;
+
+  if (total === 0) {
+    toast.success('All requests already inherit collection auth');
+    return Promise.resolve();
+  }
+
+  dispatch(_setAllItemsAuthToInherit({ collectionUid }));
+
+  const saves = [
+    ...requestUids.map((uid) => dispatch(saveRequest(uid, collectionUid, true))),
+    ...folderUids.map((uid) => dispatch(saveFolderRoot(collectionUid, uid, true)))
+  ];
+
+  return Promise.all(saves)
+    .then(() => {
+      toast.success(`Auth set to inherit for ${total} item${total === 1 ? '' : 's'}`);
+    })
+    .catch((err) => {
+      toast.error(err.message || 'Failed to update auth');
+      throw err;
+    });
 };
 
 export const saveMultipleCollections = (collectionDrafts) => (dispatch, getState) => {

@@ -1,6 +1,9 @@
 import { get } from 'lodash';
 import {
-  getTreePathFromCollectionToItem
+  flattenItems,
+  getTreePathFromCollectionToItem,
+  isItemAFolder,
+  isItemARequest
 } from 'utils/collections/index';
 import { AUTH_MODES } from 'utils/common/constants';
 
@@ -90,4 +93,29 @@ export const hasEffectiveAuth = (collection, item, supportedModes) => {
   if (!mode || mode === AUTH_MODES.NONE) return false;
   if (supportedModes && !supportedModes.includes(mode)) return false;
   return true;
+};
+
+export const getItemsWithNonInheritAuth = (collection) => {
+  const requests = [];
+  const folders = [];
+
+  flattenItems(collection?.items || []).forEach((item) => {
+    if (isItemARequest(item)) {
+      const mode = item.draft
+        ? get(item, 'draft.request.auth.mode')
+        : get(item, 'request.auth.mode');
+      if (mode !== AUTH_MODES.INHERIT) {
+        requests.push(item);
+      }
+    } else if (isItemAFolder(item)) {
+      const mode = item.draft
+        ? get(item, 'draft.request.auth.mode')
+        : get(item, 'root.request.auth.mode');
+      if (mode !== AUTH_MODES.INHERIT) {
+        folders.push(item);
+      }
+    }
+  });
+
+  return { requests, folders };
 };
