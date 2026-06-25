@@ -19,6 +19,7 @@ export const workspacesSlice = createSlice({
     createWorkspace: (state, action) => {
       const workspace = action.payload;
       workspace.collections = workspace.collections || [];
+      workspace.collectionGroups = workspace.collectionGroups || [];
 
       const existingWorkspace = state.workspaces.find((w) => w.uid === workspace.uid);
       if (!existingWorkspace) {

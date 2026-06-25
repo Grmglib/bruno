@@ -25,19 +25,27 @@ const {
   clearCollectionGitRemote,
   reorderWorkspaceCollections,
   getWorkspaceCollections,
+  getWorkspaceCollectionGroups,
+  createCollectionGroup,
   resolveAndFilterWorkspaceCollections,
   normalizeCollectionEntry,
   validateWorkspacePath,
   validateWorkspaceDirectory,
   getWorkspaceUid
 } = require('../utils/workspace-config');
+const {
+  assignCollectionToGroupWithFilesystem,
+  renameCollectionGroupWithFilesystem,
+  deleteCollectionGroupWithFilesystem
+} = require('../utils/collection-group-filesystem');
 
 const DEFAULT_WORKSPACE_NAME = 'My Workspace';
 
 const prepareWorkspaceConfigForClient = (workspaceConfig, workspacePath, isDefault) => {
   const config = {
     ...workspaceConfig,
-    collections: resolveAndFilterWorkspaceCollections(workspacePath, workspaceConfig.collections)
+    collections: resolveAndFilterWorkspaceCollections(workspacePath, workspaceConfig.collections),
+    collectionGroups: Array.isArray(workspaceConfig.collectionGroups) ? workspaceConfig.collectionGroups : []
   };
 
   if (isDefault) {
@@ -50,7 +58,7 @@ const prepareWorkspaceConfigForClient = (workspaceConfig, workspacePath, isDefau
   return config;
 };
 
-const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
+const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) => {
   const lastOpenedWorkspaces = new LastOpenedWorkspaces();
 
   ipcMain.handle('renderer:create-workspace',
@@ -177,7 +185,84 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher) => {
       }
 
       validateWorkspacePath(workspacePath);
-      return getWorkspaceCollections(workspacePath);
+      return {
+        collections: getWorkspaceCollections(workspacePath),
+        collectionGroups: getWorkspaceCollectionGroups(workspacePath)
+      };
+    } catch (error) {
+      throw error;
+    }
+  });
+
+  ipcMain.handle('renderer:create-collection-group', async (event, workspacePath, name) => {
+    try {
+      validateWorkspacePath(workspacePath);
+      const group = await createCollectionGroup(workspacePath, name);
+      const config = readWorkspaceConfig(workspacePath);
+      const isDefault = getWorkspaceUid(workspacePath) === 'default';
+      const configForClient = prepareWorkspaceConfigForClient(config, workspacePath, isDefault);
+      mainWindow.webContents.send('main:workspace-config-updated', workspacePath, getWorkspaceUid(workspacePath), configForClient);
+      return group;
+    } catch (error) {
+      throw error;
+    }
+  });
+
+  ipcMain.handle('renderer:rename-collection-group', async (event, workspacePath, groupUid, name) => {
+    try {
+      validateWorkspacePath(workspacePath);
+      const { relocations } = await renameCollectionGroupWithFilesystem({
+        workspacePath,
+        groupUid,
+        name,
+        watcher: collectionWatcher,
+        mainWindow
+      });
+      const config = readWorkspaceConfig(workspacePath);
+      const isDefault = getWorkspaceUid(workspacePath) === 'default';
+      const configForClient = prepareWorkspaceConfigForClient(config, workspacePath, isDefault);
+      mainWindow.webContents.send('main:workspace-config-updated', workspacePath, getWorkspaceUid(workspacePath), configForClient);
+      return { relocations };
+    } catch (error) {
+      throw error;
+    }
+  });
+
+  ipcMain.handle('renderer:delete-collection-group', async (event, workspacePath, groupUid) => {
+    try {
+      validateWorkspacePath(workspacePath);
+      const { relocations } = await deleteCollectionGroupWithFilesystem({
+        workspacePath,
+        groupUid,
+        watcher: collectionWatcher,
+        mainWindow
+      });
+      const config = readWorkspaceConfig(workspacePath);
+      const isDefault = getWorkspaceUid(workspacePath) === 'default';
+      const configForClient = prepareWorkspaceConfigForClient(config, workspacePath, isDefault);
+      mainWindow.webContents.send('main:workspace-config-updated', workspacePath, getWorkspaceUid(workspacePath), configForClient);
+      return { relocations };
+    } catch (error) {
+      throw error;
+    }
+  });
+
+  ipcMain.handle('renderer:assign-collection-to-group', async (event, workspacePath, collectionPath, groupUid, collectionUid) => {
+    try {
+      validateWorkspacePath(workspacePath);
+      const result = await assignCollectionToGroupWithFilesystem({
+        workspacePath,
+        collectionPath,
+        groupUid,
+        collectionUid,
+        watcher: collectionWatcher,
+        mainWindow
+      });
+      const config = readWorkspaceConfig(workspacePath);
+      const isDefault = getWorkspaceUid(workspacePath) === 'default';
+      const configForClient = prepareWorkspaceConfigForClient(config, workspacePath, isDefault);
+      mainWindow.webContents.send('main:workspace-config-updated', workspacePath, getWorkspaceUid(workspacePath), configForClient);
+      return result;
     } catch (error) {
       throw error;
     }

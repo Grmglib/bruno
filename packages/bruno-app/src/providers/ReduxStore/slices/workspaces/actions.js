@@ -8,12 +8,12 @@ import {
   updateWorkspaceLoadingState,
   setWorkspaceScratchCollection
 } from '../workspaces';
-import { createCollection, openCollection, openMultipleCollections, openScratchCollectionEvent, mountCollection } from '../collections/actions';
+import { createCollection, openCollection, openMultipleCollections, openScratchCollectionEvent, mountCollection, ensureActiveTabInCurrentWorkspace } from '../collections/actions';
 import { removeCollection, addTransientDirectory, updateCollectionMountStatus, expandCollection, sortCollections } from '../collections';
 import { sanitizeName } from 'utils/common/regex';
 import { clearCollectionState } from '../openapi-sync';
 import { updateGlobalEnvironments } from '../global-environments';
-import { addTab, restoreTabs } from '../tabs';
+import { addTab, restoreTabs, closeAllCollectionTabs } from '../tabs';
 import {
   setSnapshotReady,
   startSnapshotHydrationSession,
@@ -22,6 +22,8 @@ import {
 } from '../app';
 import { openConsole, closeConsole, setActiveTab as setActiveDevToolsTab, TAB_IDENFIERS as DEVTOOL_TABS } from '../logs';
 import { normalizePath } from 'utils/common/path';
+import { findCollectionByPathname } from 'utils/collections';
+import { waitForNextTick } from 'utils/common';
 import { hydrateTabs, getActiveTabFromSnapshot, hydrateSnapshotLookups } from 'utils/snapshot';
 import toast from 'react-hot-toast';
 
@@ -723,22 +725,24 @@ export const loadWorkspaceCollections = (workspaceUid, force = false) => {
       dispatch(updateWorkspaceLoadingState({ workspaceUid, loadingState: 'loading' }));
 
       let collections = [];
+      let collectionGroups = [];
 
       if (!workspace.pathname) {
         collections = [];
       } else {
-        const rawCollections = await ipcRenderer.invoke('renderer:load-workspace-collections', workspace.pathname);
-
-        collections = rawCollections.map((collection) => {
-          return {
-            ...collection
-          };
-        });
+        const result = await ipcRenderer.invoke('renderer:load-workspace-collections', workspace.pathname);
+        if (Array.isArray(result)) {
+          collections = result;
+        } else {
+          collections = result?.collections || [];
+          collectionGroups = result?.collectionGroups || [];
+        }
       }
 
       dispatch(updateWorkspace({
         uid: workspaceUid,
-        collections
+        collections,
+        collectionGroups
       }));
 
       dispatch(updateWorkspaceLoadingState({ workspaceUid, loadingState: 'loaded' }));
@@ -1386,6 +1390,129 @@ export const mountScratchCollection = (workspaceUid) => {
         dispatch(updateCollectionMountStatus({ collectionUid: workspace.scratchCollectionUid, mountStatus: 'unmounted' }));
       }
       return null;
+    }
+  };
+};
+
+const getWorkspaceByUid = (state, workspaceUid) => {
+  return state.workspaces.workspaces.find((w) => w.uid === workspaceUid);
+};
+
+const relocateCollectionsAfterGroupChange = (relocations, workspacePath) => {
+  return async (dispatch, getState) => {
+    if (!relocations?.length) {
+      return;
+    }
+
+    const pathsToReopen = [];
+
+    for (const { oldPath, newPath, wasOpen } of relocations) {
+      const collection = findCollectionByPathname(getState().collections.collections, oldPath);
+      if (collection) {
+        dispatch(closeAllCollectionTabs({ collectionUid: collection.uid }));
+        dispatch(removeCollection({ collectionUid: collection.uid }));
+      }
+
+      if (wasOpen && newPath) {
+        pathsToReopen.push(newPath);
+      }
+    }
+
+    if (pathsToReopen.length === 0) {
+      return;
+    }
+
+    await waitForNextTick();
+    const uniquePaths = [...new Map(
+      pathsToReopen.map((collectionPath) => [normalizePath(collectionPath), collectionPath])
+    ).values()];
+
+    await dispatch(openMultipleCollections(uniquePaths, { workspacePath }));
+    dispatch(ensureActiveTabInCurrentWorkspace());
+  };
+};
+
+export const createCollectionGroupAction = (workspaceUid, name) => {
+  return async (dispatch, getState) => {
+    const workspace = getWorkspaceByUid(getState(), workspaceUid);
+    if (!workspace?.pathname) {
+      throw new Error('Workspace not found');
+    }
+
+    try {
+      await ipcRenderer.invoke('renderer:create-collection-group', workspace.pathname, name);
+      toast.success('Folder created');
+    } catch (error) {
+      toast.error(error.message || 'Failed to create folder');
+      throw error;
+    }
+  };
+};
+
+export const renameCollectionGroupAction = (workspaceUid, groupUid, name) => {
+  return async (dispatch, getState) => {
+    const workspace = getWorkspaceByUid(getState(), workspaceUid);
+    if (!workspace?.pathname) {
+      throw new Error('Workspace not found');
+    }
+
+    try {
+      const { relocations } = await ipcRenderer.invoke(
+        'renderer:rename-collection-group',
+        workspace.pathname,
+        groupUid,
+        name
+      );
+      await dispatch(relocateCollectionsAfterGroupChange(relocations || [], workspace.pathname));
+      toast.success('Folder renamed');
+    } catch (error) {
+      toast.error(error.message || 'Failed to rename folder');
+      throw error;
+    }
+  };
+};
+
+export const deleteCollectionGroupAction = (workspaceUid, groupUid) => {
+  return async (dispatch, getState) => {
+    const workspace = getWorkspaceByUid(getState(), workspaceUid);
+    if (!workspace?.pathname) {
+      throw new Error('Workspace not found');
+    }
+
+    try {
+      const { relocations } = await ipcRenderer.invoke(
+        'renderer:delete-collection-group',
+        workspace.pathname,
+        groupUid
+      );
+      await dispatch(relocateCollectionsAfterGroupChange(relocations || [], workspace.pathname));
+      toast.success('Folder deleted');
+    } catch (error) {
+      toast.error(error.message || 'Failed to delete folder');
+      throw error;
+    }
+  };
+};
+
+export const assignCollectionToGroupAction = (workspaceUid, collectionPath, groupUid, collectionUid = null) => {
+  return async (dispatch, getState) => {
+    const workspace = getWorkspaceByUid(getState(), workspaceUid);
+    if (!workspace?.pathname) {
+      throw new Error('Workspace not found');
+    }
+
+    try {
+      const result = await ipcRenderer.invoke(
+        'renderer:assign-collection-to-group',
+        workspace.pathname,
+        collectionPath,
+        groupUid,
+        collectionUid
+      );
+      await dispatch(relocateCollectionsAfterGroupChange(result?.relocations || [], workspace.pathname));
+    } catch (error) {
+      toast.error(error.message || 'Failed to move collection');
+      throw error;
     }
   };
 };

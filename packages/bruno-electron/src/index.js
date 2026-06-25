@@ -471,7 +471,7 @@ app.on('ready', async () => {
   registerCollectionsIpc(mainWindow, collectionWatcher);
   registerPreferencesIpc(mainWindow, collectionWatcher);
   registerSnapshotIpc();
-  registerWorkspaceIpc(mainWindow, workspaceWatcher);
+  registerWorkspaceIpc(mainWindow, workspaceWatcher, collectionWatcher);
   registerApiSpecIpc(mainWindow, apiSpecWatcher);
   registerNotificationsIpc(mainWindow, collectionWatcher);
   registerFilesystemIpc(mainWindow);

@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const yaml = require('js-yaml');
-const { writeFile, validateName, isValidCollectionDirectory } = require('./filesystem');
-const { generateUidBasedOnHash } = require('./common');
+const { writeFile, validateName, isValidCollectionDirectory, sanitizeName, createDirectory } = require('./filesystem');
+const { findUniqueFolderName } = require('./collection-import');
+const { generateUidBasedOnHash, uuid } = require('./common');
 const { withLock, getWorkspaceLockKey } = require('./workspace-lock');
 
 // Normalize Windows backslash paths to forward slashes for cross-platform compatibility.
@@ -106,6 +107,57 @@ const sanitizeCollections = (collections) => {
       sanitized.remote = collection.remote.trim();
     }
 
+    if (collection.group && typeof collection.group === 'string' && collection.group.trim() !== '') {
+      sanitized.group = collection.group.trim();
+    }
+
+    return sanitized;
+  });
+};
+
+const isValidCollectionGroupEntry = (group) => {
+  if (!group || typeof group !== 'object') {
+    return false;
+  }
+
+  if (!group.uid || typeof group.uid !== 'string' || group.uid.trim() === '') {
+    return false;
+  }
+
+  if (!group.name || typeof group.name !== 'string' || group.name.trim() === '') {
+    return false;
+  }
+
+  return true;
+};
+
+const sanitizeCollectionGroups = (groups) => {
+  if (!Array.isArray(groups)) {
+    return [];
+  }
+
+  const seenUids = new Set();
+
+  return groups.filter((group) => {
+    if (!isValidCollectionGroupEntry(group)) {
+      console.error('Skipping invalid collection group entry:', group);
+      return false;
+    }
+    if (seenUids.has(group.uid.trim())) {
+      return false;
+    }
+    seenUids.add(group.uid.trim());
+    return true;
+  }).map((group) => {
+    const sanitized = {
+      uid: group.uid.trim(),
+      name: group.name.trim()
+    };
+
+    if (group.path && typeof group.path === 'string' && group.path.trim() !== '') {
+      sanitized.path = posixifyPath(group.path.trim());
+    }
+
     return sanitized;
   });
 };
@@ -161,6 +213,10 @@ const normalizeCollectionEntry = (workspacePath, collection) => {
     normalizedCollection.remote = collection.remote;
   }
 
+  if (collection.group) {
+    normalizedCollection.group = collection.group;
+  }
+
   return normalizedCollection;
 };
 
@@ -195,6 +251,7 @@ const createWorkspaceConfig = (workspaceName) => ({
     type: WORKSPACE_TYPE
   },
   collections: [],
+  collectionGroups: [],
   specs: [],
   docs: ''
 });
@@ -209,6 +266,7 @@ const normalizeWorkspaceConfig = (config) => {
     name: config.info?.name,
     type: config.info?.type,
     collections: config.collections || [],
+    collectionGroups: Array.isArray(config.collectionGroups) ? config.collectionGroups : [],
     specs,
     // Distinct array (not an alias of `specs`) so a later in-place mutation of
     // one field can't silently change the other.
@@ -244,6 +302,19 @@ const generateYamlContent = (config) => {
   yamlLines.push(`  type: ${workspaceType}`);
   yamlLines.push('');
 
+  const collectionGroups = sanitizeCollectionGroups(config.collectionGroups);
+  if (collectionGroups.length > 0) {
+    yamlLines.push('collectionGroups:');
+    for (const group of collectionGroups) {
+      yamlLines.push(`  - uid: ${quoteYamlValue(group.uid)}`);
+      yamlLines.push(`    name: ${quoteYamlValue(group.name)}`);
+      if (group.path) {
+        yamlLines.push(`    path: ${quoteYamlValue(group.path)}`);
+      }
+    }
+    yamlLines.push('');
+  }
+
   const collections = sanitizeCollections(config.collections);
   if (collections.length > 0) {
     yamlLines.push('collections:');
@@ -252,6 +323,9 @@ const generateYamlContent = (config) => {
       yamlLines.push(`    path: ${quoteYamlValue(collection.path)}`);
       if (collection.remote) {
         yamlLines.push(`    remote: ${quoteYamlValue(collection.remote)}`);
+      }
+      if (collection.group) {
+        yamlLines.push(`    group: ${quoteYamlValue(collection.group)}`);
       }
     }
   } else {
@@ -353,6 +427,10 @@ const addCollectionToWorkspace = async (workspacePath, collection) => {
 
     if (collection.remote && typeof collection.remote === 'string') {
       normalizedCollection.remote = collection.remote.trim();
+    }
+
+    if (collection.group && typeof collection.group === 'string') {
+      normalizedCollection.group = collection.group.trim();
     }
 
     const existingIndex = config.collections.findIndex((c) => c.path && posixifyPath(c.path) === normalizedCollection.path);
@@ -593,6 +671,164 @@ const getWorkspaceCollections = (workspacePath) => {
   return resolveAndFilterWorkspaceCollections(workspacePath, config.collections);
 };
 
+const getWorkspaceCollectionGroups = (workspacePath) => {
+  const config = readWorkspaceConfig(workspacePath);
+  return sanitizeCollectionGroups(config.collectionGroups);
+};
+
+const findCollectionEntryByPath = (config, workspacePath, collectionPath) => {
+  const target = posixifyPath(path.normalize(collectionPath));
+  return (config.collections || []).find(
+    (c) => posixifyPath(getNormalizedAbsoluteCollectionPath(workspacePath, c)) === target
+  );
+};
+
+const createCollectionGroup = async (workspacePath, name) => {
+  const trimmedName = typeof name === 'string' ? name.trim() : '';
+  if (!trimmedName) {
+    throw new Error('Collection group name is required');
+  }
+
+  return withLock(getWorkspaceLockKey(workspacePath), async () => {
+    const config = readWorkspaceConfig(workspacePath);
+    if (!config.collectionGroups) {
+      config.collectionGroups = [];
+    }
+
+    const collectionsRoot = path.join(workspacePath, 'collections');
+    if (!fs.existsSync(collectionsRoot)) {
+      await createDirectory(collectionsRoot);
+    }
+
+    let folderName = sanitizeName(trimmedName);
+    if (!folderName) {
+      throw new Error('Invalid collection group name');
+    }
+
+    if (fs.existsSync(path.join(collectionsRoot, folderName))) {
+      folderName = sanitizeName(await findUniqueFolderName(folderName, collectionsRoot));
+    }
+
+    const groupDir = path.join(collectionsRoot, folderName);
+    await createDirectory(groupDir);
+
+    const group = {
+      uid: uuid(),
+      name: trimmedName,
+      path: makeRelativePath(workspacePath, groupDir)
+    };
+    config.collectionGroups.push(group);
+
+    await writeWorkspaceFileAtomic(workspacePath, generateYamlContent(config));
+    return group;
+  });
+};
+
+const renameCollectionGroup = async (workspacePath, groupUid, name, options = {}) => {
+  const trimmedName = typeof name === 'string' ? name.trim() : '';
+  if (!trimmedName) {
+    throw new Error('Collection group name is required');
+  }
+
+  const { newGroupPath, oldGroupPath } = options;
+
+  return withLock(getWorkspaceLockKey(workspacePath), async () => {
+    const config = readWorkspaceConfig(workspacePath);
+    const group = (config.collectionGroups || []).find((g) => g.uid === groupUid);
+    if (!group) {
+      throw new Error('Collection group not found');
+    }
+
+    group.name = trimmedName;
+
+    if (newGroupPath) {
+      group.path = makeRelativePath(workspacePath, newGroupPath);
+    }
+
+    if (oldGroupPath && newGroupPath) {
+      const oldRel = posixifyPath(makeRelativePath(workspacePath, oldGroupPath));
+      const newRel = posixifyPath(makeRelativePath(workspacePath, newGroupPath));
+
+      config.collections = (config.collections || []).map((collection) => {
+        if (collection.group !== groupUid) {
+          return collection;
+        }
+
+        const collectionPath = posixifyPath(collection.path);
+        if (collectionPath === oldRel || collectionPath.startsWith(`${oldRel}/`)) {
+          return {
+            ...collection,
+            path: posixifyPath(`${newRel}${collectionPath.slice(oldRel.length)}`)
+          };
+        }
+
+        return collection;
+      });
+    }
+
+    await writeWorkspaceFileAtomic(workspacePath, generateYamlContent(config));
+    return group;
+  });
+};
+
+const deleteCollectionGroup = async (workspacePath, groupUid, options = {}) => {
+  return withLock(getWorkspaceLockKey(workspacePath), async () => {
+    const config = readWorkspaceConfig(workspacePath);
+    const groups = config.collectionGroups || [];
+    const groupIndex = groups.findIndex((g) => g.uid === groupUid);
+    if (groupIndex < 0) {
+      throw new Error('Collection group not found');
+    }
+
+    config.collectionGroups = groups.filter((g) => g.uid !== groupUid);
+
+    if (Array.isArray(options.collections)) {
+      config.collections = options.collections;
+    } else {
+      config.collections = (config.collections || []).map((c) => {
+        if (c.group === groupUid) {
+          const updated = { ...c };
+          delete updated.group;
+          return updated;
+        }
+        return c;
+      });
+    }
+
+    await writeWorkspaceFileAtomic(workspacePath, generateYamlContent(config));
+    return config.collectionGroups;
+  });
+};
+
+const assignCollectionToGroup = async (workspacePath, collectionPath, groupUid, options = {}) => {
+  const { newPath } = options;
+
+  return withLock(getWorkspaceLockKey(workspacePath), async () => {
+    const config = readWorkspaceConfig(workspacePath);
+    const entry = findCollectionEntryByPath(config, workspacePath, collectionPath);
+    if (!entry) {
+      throw new Error('Collection not found in workspace');
+    }
+
+    if (groupUid) {
+      const groupExists = (config.collectionGroups || []).some((g) => g.uid === groupUid);
+      if (!groupExists) {
+        throw new Error('Collection group not found');
+      }
+      entry.group = groupUid;
+    } else {
+      delete entry.group;
+    }
+
+    if (newPath) {
+      entry.path = makeRelativePath(workspacePath, newPath);
+    }
+
+    await writeWorkspaceFileAtomic(workspacePath, generateYamlContent(config));
+    return entry;
+  });
+};
+
 const getWorkspaceApiSpecs = (workspacePath) => {
   const config = readWorkspaceConfig(workspacePath);
   const specs = config.specs || [];
@@ -705,7 +941,14 @@ module.exports = {
   clearCollectionGitRemote,
   reorderWorkspaceCollections,
   getWorkspaceCollections,
+  getWorkspaceCollectionGroups,
+  createCollectionGroup,
+  renameCollectionGroup,
+  deleteCollectionGroup,
+  assignCollectionToGroup,
+  getNormalizedAbsoluteCollectionPath,
   resolveAndFilterWorkspaceCollections,
+  sanitizeCollectionGroups,
   getWorkspaceApiSpecs,
   addApiSpecToWorkspace,
   removeApiSpecFromWorkspace,

@@ -7,6 +7,7 @@ import {
   IconDotsVertical,
   IconDownload,
   IconFolder,
+  IconFolderPlus,
   IconPlus,
   IconSearch,
   IconSortAscendingLetters,
@@ -36,6 +37,7 @@ import PostmanPackageReport from 'components/Sidebar/PostmanPackageReport';
 import usePostmanPackagePrompt from 'hooks/usePostmanPackagePrompt';
 import WelcomeModal from 'components/WelcomeModal';
 import Collections from 'components/Sidebar/Collections';
+import NewCollectionGroupModal from 'components/Sidebar/Collections/NewCollectionGroupModal';
 import SidebarSection from 'components/Sidebar/SidebarSection';
 import { openDevtoolsAndSwitchToTerminal } from 'utils/terminal';
 import useKeybinding from 'hooks/useKeybinding';
@@ -60,6 +62,7 @@ const CollectionsSection = () => {
   const [importCollectionLocationModalOpen, setImportCollectionLocationModalOpen] = useState(false);
   const [showCloneGitModal, setShowCloneGitModal] = useState(false);
   const [gitRepositoryUrl, setGitRepositoryUrl] = useState(null);
+  const [showNewCollectionGroupModal, setShowNewCollectionGroupModal] = useState(false);
   const { postmanPackagePrompt, clearPostmanPackagePrompt, handleImportResolved } = usePostmanPackagePrompt();
 
   // Import collection shortcut
@@ -254,6 +257,14 @@ const CollectionsSection = () => {
       }
     },
     {
+      id: 'create-folder',
+      leftSection: IconFolderPlus,
+      label: 'Create folder',
+      onClick: () => {
+        setShowNewCollectionGroupModal(true);
+      }
+    },
+    {
       id: 'open',
       leftSection: IconFolder,
       label: 'Open collection',
@@ -367,6 +378,12 @@ const CollectionsSection = () => {
             setAdvancedCreateName('');
           }}
           initialCollectionName={advancedCreateName}
+        />
+      )}
+      {showNewCollectionGroupModal && activeWorkspace && (
+        <NewCollectionGroupModal
+          workspaceUid={activeWorkspace.uid}
+          onClose={() => setShowNewCollectionGroupModal(false)}
         />
       )}
       {importCollectionModalOpen && (

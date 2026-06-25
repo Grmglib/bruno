@@ -3047,6 +3047,28 @@ export const importCollectionFromZip = (zipFilePath, collectionLocation) => asyn
 };
 
 /**
+ * Compare collection paths whether stored as absolute or workspace-relative.
+ */
+const collectionPathsMatch = (leftPath, rightPath, workspacePath) => {
+  if (!leftPath || !rightPath) {
+    return false;
+  }
+
+  const left = normalizePath(leftPath);
+  const right = normalizePath(rightPath);
+  if (left === right) {
+    return true;
+  }
+
+  if (!workspacePath) {
+    return false;
+  }
+
+  return normalizePath(path.resolve(workspacePath, leftPath))
+    === normalizePath(path.resolve(workspacePath, rightPath));
+};
+
+/**
  * Updates Redux collection order and persists it to the active workspace's workspace.yml.
  */
 export const moveCollectionAndPersist
@@ -3060,17 +3082,20 @@ export const moveCollectionAndPersist
         return Promise.resolve();
       }
 
-      const workspacePathSet = new Set(
-        activeWorkspace.collections.map((wc) => normalizePath(wc.path))
-      );
       const collectionsInWorkspace = state.collections.collections
-        .filter((c) => workspacePathSet.has(normalizePath(c.pathname)));
+        .filter((c) => activeWorkspace.collections.some(
+          (wc) => collectionPathsMatch(c.pathname, wc.path, activeWorkspace.pathname)
+        ));
       if (collectionsInWorkspace.length === 0) {
         return Promise.resolve();
       }
 
       const reordered = collectionsInWorkspace.filter((i) => i.uid !== draggedItem.uid);
       const targetIndex = reordered.findIndex((i) => i.uid === targetItem.uid);
+      if (targetIndex < 0) {
+        return Promise.resolve();
+      }
+
       reordered.splice(targetIndex, 0, draggedItem);
       const collectionPaths = reordered.map((c) => c.pathname);
 

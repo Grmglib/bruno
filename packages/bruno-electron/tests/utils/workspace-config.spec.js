@@ -6,8 +6,18 @@ const {
   reorderWorkspaceCollections,
   setCollectionGitRemote,
   clearCollectionGitRemote,
-  getWorkspaceCollections
+  getWorkspaceCollections,
+  createCollectionGroup,
+  renameCollectionGroup,
+  deleteCollectionGroup,
+  assignCollectionToGroup,
+  readWorkspaceConfig,
+  generateYamlContent
 } = require('../../src/utils/workspace-config');
+const {
+  assignCollectionToGroupWithFilesystem,
+  deleteCollectionGroupWithFilesystem
+} = require('../../src/utils/collection-group-filesystem');
 
 const collection = (name, pathSegment, extra = {}) => ({ name, path: pathSegment, ...extra });
 
@@ -368,5 +378,155 @@ describe('workspace specs normalization', () => {
       // Round-trip through readWorkspaceConfig (which coerces) must yield a safe array.
       expect(Array.isArray(readWorkspaceConfig(workspacePath).specs)).toBe(true);
     });
+  });
+});
+
+describe('collection groups', () => {
+  let workspacePath;
+
+  const writeWorkspaceYml = ({ collections = [], collectionGroups = [] } = {}) => {
+    const lines = [
+      'opencollection: 1.0.0',
+      'info:',
+      '  name: Test',
+      '  type: workspace'
+    ];
+
+    if (collectionGroups.length > 0) {
+      lines.push('collectionGroups:');
+      for (const group of collectionGroups) {
+        lines.push(`  - uid: "${group.uid}"`);
+        lines.push(`    name: "${group.name}"`);
+        if (group.path) {
+          lines.push(`    path: "${group.path}"`);
+        }
+      }
+    }
+
+    lines.push('collections:');
+    for (const c of collections) {
+      lines.push(`  - name: "${c.name}"`);
+      lines.push(`    path: "${c.path}"`);
+      if (c.group) lines.push(`    group: "${c.group}"`);
+    }
+    lines.push('specs: []');
+    lines.push('docs: \'\'');
+    fs.writeFileSync(path.join(workspacePath, 'workspace.yml'), lines.join('\n'));
+  };
+
+  const absPath = (relativePath) => path.resolve(workspacePath, relativePath);
+
+  const createMockCollectionDir = (relativePath, name = null) => {
+    const absolutePath = absPath(relativePath);
+    fs.mkdirSync(absolutePath, { recursive: true });
+    fs.writeFileSync(
+      path.join(absolutePath, 'bruno.json'),
+      JSON.stringify({ name: name || path.basename(relativePath), version: '1' })
+    );
+    return absolutePath;
+  };
+
+  beforeEach(() => {
+    workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), 'bruno-ws-groups-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(workspacePath, { recursive: true, force: true });
+  });
+
+  test('readWorkspaceConfig returns empty collectionGroups when absent', () => {
+    writeWorkspaceYml({ collections: [collection('API', 'collections/api')] });
+    const config = readWorkspaceConfig(workspacePath);
+    expect(config.collectionGroups).toEqual([]);
+  });
+
+  test('createCollectionGroup persists a new group and creates directory on disk', async () => {
+    writeWorkspaceYml();
+    fs.mkdirSync(absPath('collections'), { recursive: true });
+    const group = await createCollectionGroup(workspacePath, 'Backend APIs');
+    expect(group.uid).toBeTruthy();
+    expect(group.name).toBe('Backend APIs');
+    expect(group.path).toBeTruthy();
+
+    const config = readWorkspaceConfig(workspacePath);
+    expect(config.collectionGroups).toHaveLength(1);
+    expect(config.collectionGroups[0].name).toBe('Backend APIs');
+    expect(config.collectionGroups[0].path).toBeTruthy();
+    expect(fs.existsSync(absPath(config.collectionGroups[0].path))).toBe(true);
+  });
+
+  test('renameCollectionGroup updates group name', async () => {
+    writeWorkspaceYml({ collectionGroups: [{ uid: 'g1', name: 'Old Name' }] });
+    await renameCollectionGroup(workspacePath, 'g1', 'New Name');
+    const config = readWorkspaceConfig(workspacePath);
+    expect(config.collectionGroups[0].name).toBe('New Name');
+  });
+
+  test('deleteCollectionGroup removes group and moves collections to collections root', async () => {
+    writeWorkspaceYml({
+      collectionGroups: [{ uid: 'g1', name: 'Backend', path: 'collections/backend' }],
+      collections: [collection('API', 'collections/backend/api', { group: 'g1' })]
+    });
+    fs.mkdirSync(absPath('collections/backend'), { recursive: true });
+    createMockCollectionDir('collections/backend/api', 'API');
+
+    await deleteCollectionGroupWithFilesystem({ workspacePath, groupUid: 'g1' });
+
+    const config = readWorkspaceConfig(workspacePath);
+    expect(config.collectionGroups).toEqual([]);
+    expect(config.collections[0].group).toBeUndefined();
+    expect(config.collections[0].path).toBe('collections/api');
+    expect(fs.existsSync(absPath('collections/api'))).toBe(true);
+    expect(fs.existsSync(absPath('collections/backend/api'))).toBe(false);
+  });
+
+  test('assignCollectionToGroup moves collection into and out of group folders', async () => {
+    writeWorkspaceYml({
+      collectionGroups: [{ uid: 'g1', name: 'Backend', path: 'collections/backend' }],
+      collections: [collection('API', 'collections/api')]
+    });
+    fs.mkdirSync(absPath('collections'), { recursive: true });
+    fs.mkdirSync(absPath('collections/backend'), { recursive: true });
+    createMockCollectionDir('collections/api', 'API');
+
+    await assignCollectionToGroupWithFilesystem({
+      workspacePath,
+      collectionPath: absPath('collections/api'),
+      groupUid: 'g1'
+    });
+
+    let config = readWorkspaceConfig(workspacePath);
+    expect(config.collections[0].group).toBe('g1');
+    expect(config.collections[0].path).toBe('collections/backend/api');
+    expect(fs.existsSync(absPath('collections/backend/api'))).toBe(true);
+    expect(fs.existsSync(absPath('collections/api'))).toBe(false);
+
+    await assignCollectionToGroupWithFilesystem({
+      workspacePath,
+      collectionPath: absPath('collections/backend/api'),
+      groupUid: null
+    });
+
+    config = readWorkspaceConfig(workspacePath);
+    expect(config.collections[0].group).toBeUndefined();
+    expect(config.collections[0].path).toBe('collections/api');
+    expect(fs.existsSync(absPath('collections/api'))).toBe(true);
+    expect(fs.existsSync(absPath('collections/backend/api'))).toBe(false);
+  });
+
+  test('generateYamlContent round-trips collection groups', () => {
+    const content = generateYamlContent({
+      opencollection: '1.0.0',
+      info: { name: 'Test', type: 'workspace' },
+      collectionGroups: [{ uid: 'g1', name: 'Backend', path: 'collections/backend' }],
+      collections: [{ name: 'API', path: 'collections/backend/api', group: 'g1' }],
+      specs: [],
+      docs: ''
+    });
+
+    fs.writeFileSync(path.join(workspacePath, 'workspace.yml'), content);
+    const config = readWorkspaceConfig(workspacePath);
+    expect(config.collectionGroups).toEqual([{ uid: 'g1', name: 'Backend', path: 'collections/backend' }]);
+    expect(config.collections[0].group).toBe('g1');
   });
 });

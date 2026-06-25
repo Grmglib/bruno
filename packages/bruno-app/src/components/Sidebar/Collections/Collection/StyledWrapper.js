@@ -8,6 +8,16 @@ const Wrapper = styled.div`
     padding-left: 4px;
     border: ${(props) => props.theme.dragAndDrop.borderStyle} transparent;
 
+    .collection-drag-handle {
+      cursor: grab;
+      min-width: 0;
+    }
+
+    &.collection-dragging .collection-drag-handle {
+      cursor: grabbing;
+      opacity: 0.5;
+    }
+
     .rotate-90 {
       transform: rotateZ(90deg);
     }
