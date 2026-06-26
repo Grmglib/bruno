@@ -4,6 +4,7 @@ import find from 'lodash/find';
 import { useDispatch, useSelector } from 'react-redux';
 import CodeEditor from 'components/CodeEditor';
 import AIAssist from 'components/AIAssist';
+import ScriptBuilder from './ScriptBuilder';
 import { buildRequestContextFromItem } from 'utils/ai';
 import { updateRequestScript, updateResponseScript } from 'providers/ReduxStore/slices/collections';
 import { sendRequest, saveRequest } from 'providers/ReduxStore/slices/collections/actions';
@@ -148,6 +149,11 @@ const Script = ({ item, collection }) => {
               requestContext={requestContext}
               onApply={onRequestScriptEdit}
             />
+            <ScriptBuilder
+              scriptType="pre-request"
+              currentScript={requestScript || ''}
+              onApply={onRequestScriptEdit}
+            />
           </div>
         </TabsContent>
 
@@ -175,6 +181,11 @@ const Script = ({ item, collection }) => {
               scriptType="post-response"
               currentScript={responseScript || ''}
               requestContext={requestContext}
+              onApply={onResponseScriptEdit}
+            />
+            <ScriptBuilder
+              scriptType="post-response"
+              currentScript={responseScript || ''}
               onApply={onResponseScriptEdit}
             />
           </div>

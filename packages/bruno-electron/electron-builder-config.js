@@ -26,6 +26,7 @@ const config = {
     '!**/notarize.js'
   ],
   afterSign: 'notarize.js',
+  afterPack: 'scripts/embed-win-icon.cjs',
   mac: {
     artifactName: '${name}_${version}_${arch}_${os}.${ext}',
     category: 'public.app-category.developer-tools',

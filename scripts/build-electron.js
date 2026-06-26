@@ -4,6 +4,9 @@ const util = require('util');
 const spawn = util.promisify(require('child_process').spawn);
 const path = require('path');
 
+const WEB_DIST_INDEX = 'packages/bruno-app/dist/index.html';
+const WEB_PACKAGED_INDEX = 'packages/bruno-electron/web/index.html';
+
 async function deleteFileIfExists(filePath) {
   try {
     const exists = await fs.pathExists(filePath);
@@ -15,20 +18,6 @@ async function deleteFileIfExists(filePath) {
     }
   } catch (err) {
     console.error(`Error while checking the existence of ${filePath}: ${err}`);
-  }
-}
-
-async function copyFolderIfExists(srcPath, destPath) {
-  try {
-    const exists = await fs.pathExists(srcPath);
-    if (exists) {
-      await fs.copy(srcPath, destPath);
-      console.log(`${srcPath} has been successfully copied.`);
-    } else {
-      console.log(`${srcPath} was not copied as it does not exist.`);
-    }
-  } catch (err) {
-    console.error(`Error while checking the existence of ${srcPath}: ${err}`);
   }
 }
 
@@ -66,55 +55,88 @@ async function execCommandWithOutput(command) {
   });
 }
 
+async function ensureWebBuild() {
+  if (await fs.pathExists(WEB_DIST_INDEX)) {
+    console.log('Frontend build found.');
+    return;
+  }
+
+  console.log('Frontend build not found. Running npm run build:web...');
+  await execCommandWithOutput('npm run build:web');
+
+  if (!(await fs.pathExists(WEB_DIST_INDEX))) {
+    throw new Error(
+      `Frontend build failed: ${WEB_DIST_INDEX} was not created. `
+      + 'Run "npm run build:web" manually and fix any errors before packaging.'
+    );
+  }
+}
+
+async function copyWebBuild() {
+  const srcPath = 'packages/bruno-app/dist';
+  const destPath = 'packages/bruno-electron/web';
+
+  if (!(await fs.pathExists(srcPath))) {
+    throw new Error(`Frontend build directory not found: ${srcPath}`);
+  }
+
+  await fs.copy(srcPath, destPath);
+  console.log(`${srcPath} has been successfully copied to ${destPath}.`);
+
+  if (!(await fs.pathExists(WEB_PACKAGED_INDEX))) {
+    throw new Error(
+      `Failed to package frontend UI: ${WEB_PACKAGED_INDEX} is missing. `
+      + 'The installed app will show a gray screen without it.'
+    );
+  }
+}
+
+async function patchWebAssetPaths() {
+  const files = await fs.readdir('packages/bruno-electron/web');
+  for (const file of files) {
+    if (file.endsWith('.html')) {
+      let content = await fs.readFile(`packages/bruno-electron/web/${file}`, 'utf8');
+      content = content.replace(/\/static/g, './static');
+      await fs.writeFile(`packages/bruno-electron/web/${file}`, content);
+    }
+  }
+
+  const cssDir = path.join('packages/bruno-electron/web/static/css');
+  try {
+    const cssFiles = await fs.readdir(cssDir);
+    for (const file of cssFiles) {
+      if (file.endsWith('.css')) {
+        const filePath = path.join(cssDir, file);
+        let content = await fs.readFile(filePath, 'utf8');
+        content = content.replace(/\/static\/font/g, '../../static/font');
+        await fs.writeFile(filePath, content);
+      }
+    }
+  } catch (error) {
+    console.error(`Error updating font paths: ${error}`);
+    throw new Error(
+      'Failed to update font paths in the packaged web build. '
+      + 'Confirm that "npm run build:web" produced packages/bruno-app/dist/static/css.'
+    );
+  }
+}
+
 async function main() {
   try {
-    // Remove out and dist directories from previous builds
+    await ensureWebBuild();
+
     await deleteFileIfExists('packages/bruno-electron/out');
     await deleteFileIfExists('packages/bruno-electron/dist');
-
-    // Remove web directory
     await deleteFileIfExists('packages/bruno-electron/web');
-
-    // Create a new web directory
     await fs.ensureDir('packages/bruno-electron/web');
     console.log('The directory has been created successfully!');
 
-    // Copy build
-    await copyFolderIfExists('packages/bruno-app/dist', 'packages/bruno-electron/web');
-
-    // Update static paths
-    const files = await fs.readdir('packages/bruno-electron/web');
-    for (const file of files) {
-      if (file.endsWith('.html')) {
-        let content = await fs.readFile(`packages/bruno-electron/web/${file}`, 'utf8');
-        content = content.replace(/\/static/g, './static');
-        await fs.writeFile(`packages/bruno-electron/web/${file}`, content);
-      }
-    }
-
-    // update font load paths
-    const cssDir = path.join('packages/bruno-electron/web/static/css');
-    try {
-      const cssFiles = await fs.readdir(cssDir);
-      for (const file of cssFiles) {
-        if (file.endsWith('.css')) {
-          const filePath = path.join(cssDir, file);
-          let content = await fs.readFile(filePath, 'utf8');
-          content = content.replace(/\/static\/font/g, '../../static/font');
-          await fs.writeFile(filePath, content);
-        }
-      }
-    } catch (error) {
-      console.error(`Error updating font paths: ${error}`);
-    }
-
-    // Remove sourcemaps
+    await copyWebBuild();
+    await patchWebAssetPaths();
     await removeSourceMapFiles('packages/bruno-electron/web');
 
-    // Run npm dist command
     console.log('Building the Electron distribution');
 
-    // Determine the OS and set the appropriate argument
     let osArg;
     if (os.platform() === 'win32') {
       osArg = 'win';
@@ -127,6 +149,7 @@ async function main() {
     await execCommandWithOutput(`npm run dist:${osArg} --workspace=packages/bruno-electron`);
   } catch (error) {
     console.error('An error occurred:', error);
+    process.exit(1);
   }
 }
 
