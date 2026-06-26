@@ -99,6 +99,25 @@ export const buildSidebarTree = ({
   return tree;
 };
 
+export const reorderCollectionGroups = (collectionGroups = [], draggedGroupUid, targetGroupUid) => {
+  if (!draggedGroupUid || !targetGroupUid || draggedGroupUid === targetGroupUid) {
+    return [...collectionGroups];
+  }
+
+  const reordered = [...collectionGroups];
+  const draggedIndex = reordered.findIndex((group) => group.uid === draggedGroupUid);
+  const targetIndex = reordered.findIndex((group) => group.uid === targetGroupUid);
+
+  if (draggedIndex < 0 || targetIndex < 0) {
+    return [...collectionGroups];
+  }
+
+  const [draggedGroup] = reordered.splice(draggedIndex, 1);
+  reordered.splice(targetIndex, 0, draggedGroup);
+
+  return reordered;
+};
+
 export const filterSidebarTree = (tree, searchText) => {
   const query = (searchText || '').trim().toLowerCase();
   if (!query) {

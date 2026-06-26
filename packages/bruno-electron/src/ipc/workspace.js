@@ -25,6 +25,7 @@ const {
   setCollectionGitRemote,
   clearCollectionGitRemote,
   reorderWorkspaceCollections,
+  reorderWorkspaceCollectionGroups,
   getWorkspaceCollections,
   getWorkspaceCollectionGroups,
   createCollectionGroup,
@@ -278,6 +279,22 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) =
       }
       validateWorkspacePath(workspacePath);
       await reorderWorkspaceCollections(workspacePath, collectionPaths);
+      const config = readWorkspaceConfig(workspacePath);
+      const isDefault = getWorkspaceUid(workspacePath) === 'default';
+      const configForClient = prepareWorkspaceConfigForClient(config, workspacePath, isDefault);
+      mainWindow.webContents.send('main:workspace-config-updated', workspacePath, getWorkspaceUid(workspacePath), configForClient);
+    } catch (error) {
+      throw error;
+    }
+  });
+
+  ipcMain.handle('renderer:reorder-workspace-collection-groups', async (event, workspacePath, groupUids) => {
+    try {
+      if (!workspacePath) {
+        throw new Error('Workspace path is undefined');
+      }
+      validateWorkspacePath(workspacePath);
+      await reorderWorkspaceCollectionGroups(workspacePath, groupUids);
     } catch (error) {
       throw error;
     }

@@ -678,6 +678,34 @@ const reorderWorkspaceCollections = async (workspacePath, collectionPaths) => {
   });
 };
 
+const reorderWorkspaceCollectionGroups = async (workspacePath, groupUids) => {
+  if (!Array.isArray(groupUids)) {
+    throw new Error('groupUids must be an array');
+  }
+
+  return withLock(getWorkspaceLockKey(workspacePath), async () => {
+    const config = readWorkspaceConfig(workspacePath);
+    const existing = config.collectionGroups || [];
+
+    const inNewOrder = [];
+    const matched = new Set();
+
+    for (const groupUid of groupUids) {
+      const group = existing.find((entry) => entry.uid === groupUid);
+      if (group && !matched.has(group.uid)) {
+        inNewOrder.push(group);
+        matched.add(group.uid);
+      }
+    }
+
+    const notInList = existing.filter((group) => !matched.has(group.uid));
+    config.collectionGroups = [...inNewOrder, ...notInList];
+
+    const yamlContent = generateYamlContent(config);
+    await writeWorkspaceFileAtomic(workspacePath, yamlContent);
+  });
+};
+
 const resolveAndFilterWorkspaceCollections = (workspacePath, rawCollections) => {
   const seenPaths = new Set();
 
@@ -978,6 +1006,7 @@ module.exports = {
   setCollectionGitRemote,
   clearCollectionGitRemote,
   reorderWorkspaceCollections,
+  reorderWorkspaceCollectionGroups,
   getWorkspaceCollections,
   getWorkspaceCollectionGroups,
   createCollectionGroup,

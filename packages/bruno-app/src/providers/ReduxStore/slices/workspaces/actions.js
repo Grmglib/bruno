@@ -24,6 +24,7 @@ import { normalizePath } from 'utils/common/path';
 import { findCollectionByPathname } from 'utils/collections';
 import { waitForNextTick } from 'utils/common';
 import { hydrateTabs, getActiveTabFromSnapshot, hydrateSnapshotLookups } from 'utils/snapshot';
+import { reorderCollectionGroups } from 'utils/workspaces/collectionGroups';
 import toast from 'react-hot-toast';
 
 const { ipcRenderer } = window;
@@ -1391,6 +1392,10 @@ const getWorkspaceByUid = (state, workspaceUid) => {
   return state.workspaces.workspaces.find((w) => w.uid === workspaceUid);
 };
 
+const findWorkspaceCollectionByPath = (workspaceCollections = [], collectionPath) => {
+  return workspaceCollections.find((collection) => normalizePath(collection.path) === normalizePath(collectionPath));
+};
+
 const relocateCollectionsAfterGroupChange = (relocations, workspacePath) => {
   return async (dispatch, getState) => {
     if (!relocations?.length) {
@@ -1533,5 +1538,113 @@ export const assignCollectionToGroupAction = (workspaceUid, collectionPath, grou
       toast.error(error.message || 'Failed to move collection');
       throw error;
     }
+  };
+};
+
+export const moveWorkspaceCollectionAndPersist = ({ workspaceUid, draggedItem, targetItem }) => {
+  return async (dispatch, getState) => {
+    const workspace = getWorkspaceByUid(getState(), workspaceUid);
+    if (!workspace?.pathname || !workspace.collections?.length) {
+      return;
+    }
+
+    const draggedPath = draggedItem.pathname || draggedItem.path;
+    const targetPath = targetItem.pathname || targetItem.path;
+
+    if (!draggedPath || !targetPath || normalizePath(draggedPath) === normalizePath(targetPath)) {
+      return;
+    }
+
+    const draggedWorkspaceCollection = findWorkspaceCollectionByPath(workspace.collections, draggedPath);
+    const targetWorkspaceCollection = findWorkspaceCollectionByPath(workspace.collections, targetPath);
+
+    if (!draggedWorkspaceCollection || !targetWorkspaceCollection) {
+      return;
+    }
+
+    const targetGroupUid = targetWorkspaceCollection.group || null;
+    const currentGroupUid = draggedWorkspaceCollection.group || null;
+
+    let updatedDraggedPath = draggedPath;
+
+    if (currentGroupUid !== targetGroupUid) {
+      const result = await ipcRenderer.invoke(
+        'renderer:assign-collection-to-group',
+        workspace.pathname,
+        draggedPath,
+        targetGroupUid,
+        draggedItem.uid
+      );
+
+      updatedDraggedPath = result?.newPath || draggedPath;
+      await dispatch(relocateCollectionsAfterGroupChange(result?.relocations || [], workspace.pathname));
+    }
+
+    const nextDraggedCollection = {
+      ...draggedWorkspaceCollection,
+      path: updatedDraggedPath
+    };
+
+    if (targetGroupUid) {
+      nextDraggedCollection.group = targetGroupUid;
+    } else {
+      delete nextDraggedCollection.group;
+    }
+
+    const reorderedCollections = workspace.collections.filter(
+      (collection) => normalizePath(collection.path) !== normalizePath(draggedPath)
+    );
+
+    const targetIndex = reorderedCollections.findIndex(
+      (collection) => normalizePath(collection.path) === normalizePath(targetPath)
+    );
+
+    if (targetIndex < 0) {
+      return;
+    }
+
+    reorderedCollections.splice(targetIndex, 0, nextDraggedCollection);
+
+    await ipcRenderer.invoke(
+      'renderer:reorder-workspace-collections',
+      workspace.pathname,
+      reorderedCollections.map((collection) => collection.path)
+    );
+
+    dispatch(updateWorkspace({
+      uid: workspaceUid,
+      collections: reorderedCollections
+    }));
+  };
+};
+
+export const moveCollectionGroupAndPersist = ({ workspaceUid, draggedGroupUid, targetGroupUid }) => {
+  return async (dispatch, getState) => {
+    const workspace = getWorkspaceByUid(getState(), workspaceUid);
+    if (!workspace?.pathname || !workspace.collectionGroups?.length) {
+      return;
+    }
+
+    const reorderedGroups = reorderCollectionGroups(
+      workspace.collectionGroups,
+      draggedGroupUid,
+      targetGroupUid
+    );
+
+    const hasChanged = reorderedGroups.some((group, index) => group.uid !== workspace.collectionGroups[index]?.uid);
+    if (!hasChanged) {
+      return;
+    }
+
+    await ipcRenderer.invoke(
+      'renderer:reorder-workspace-collection-groups',
+      workspace.pathname,
+      reorderedGroups.map((group) => group.uid)
+    );
+
+    dispatch(updateWorkspace({
+      uid: workspaceUid,
+      collectionGroups: reorderedGroups
+    }));
   };
 };

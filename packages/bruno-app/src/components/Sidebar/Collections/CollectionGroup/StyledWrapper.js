@@ -22,6 +22,10 @@ const Wrapper = styled.div`
 
   .collection-group-row {
     border-radius: 4px;
+
+    &.is-dragging {
+      opacity: 0.5;
+    }
   }
 
   .collection-group-children {

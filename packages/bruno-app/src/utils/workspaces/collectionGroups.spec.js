@@ -1,4 +1,4 @@
-import { buildSidebarEntries, buildSidebarTree, filterSidebarTree } from './collectionGroups';
+import { buildSidebarEntries, buildSidebarTree, filterSidebarTree, reorderCollectionGroups } from './collectionGroups';
 
 describe('collectionGroups utils', () => {
   const workspaceCollections = [
@@ -53,5 +53,17 @@ describe('collectionGroups utils', () => {
     expect(filtered[0].type).toBe('group');
     expect(filtered[0].forceExpanded).toBe(true);
     expect(filtered[0].entries).toHaveLength(1);
+  });
+
+  test('reorderCollectionGroups moves the dragged group before the target group', () => {
+    const reordered = reorderCollectionGroups(collectionGroups, 'g2', 'g1');
+
+    expect(reordered.map((group) => group.uid)).toEqual(['g2', 'g1']);
+  });
+
+  test('reorderCollectionGroups returns the original order for invalid input', () => {
+    const reordered = reorderCollectionGroups(collectionGroups, 'missing', 'g1');
+
+    expect(reordered.map((group) => group.uid)).toEqual(['g1', 'g2']);
   });
 });

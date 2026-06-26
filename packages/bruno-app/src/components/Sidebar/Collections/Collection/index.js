@@ -28,8 +28,8 @@ import OpenAPISyncIcon from 'components/Icons/OpenAPISync';
 import CollectionIcon from 'components/CollectionIcon';
 import { getCollectionIconConfig } from 'utils/icons';
 import { toggleCollection, collapseFullCollection } from 'providers/ReduxStore/slices/collections';
-import { mountCollection, moveCollectionAndPersist, handleCollectionItemDrop, pasteItem, showInFolder, saveCollectionSecurityConfig } from 'providers/ReduxStore/slices/collections/actions';
-import { assignCollectionToGroupAction } from 'providers/ReduxStore/slices/workspaces/actions';
+import { mountCollection, handleCollectionItemDrop, pasteItem, showInFolder, saveCollectionSecurityConfig } from 'providers/ReduxStore/slices/collections/actions';
+import { moveWorkspaceCollectionAndPersist } from 'providers/ReduxStore/slices/workspaces/actions';
 import { useDispatch, useSelector } from 'react-redux';
 import { addTab, makeTabPermanent } from 'providers/ReduxStore/slices/tabs';
 import { setFocusedSidebarPath } from 'providers/ReduxStore/slices/app';
@@ -40,7 +40,7 @@ import NewApp from 'components/Sidebar/NewApp';
 import CollectionItem from './CollectionItem';
 import RemoveCollection from './RemoveCollection';
 import MoveToWorkspace from './MoveToWorkspace';
-import { isPathExternalToBasePath, normalizePath } from 'utils/common/path';
+import { isPathExternalToBasePath } from 'utils/common/path';
 import { doesCollectionHaveItemsMatchingSearchText } from 'utils/collections/search';
 import { isItemAFolder, isItemARequest, areItemsLoading } from 'utils/collections';
 import { isTabForItemActive } from 'src/selectors/tab';
@@ -95,28 +95,6 @@ const Collection = ({ collection, searchText }) => {
     state.workspaces.workspaces.find((w) => w.uid === state.workspaces.activeWorkspaceUid)
   );
   const isMoveToWorkspaceVisible = isPathExternalToBasePath(activeWorkspace?.pathname, collection.pathname);
-
-  const findWorkspaceCollectionByPath = (collectionPath) => {
-    if (!collectionPath || !activeWorkspace?.collections?.length) {
-      return null;
-    }
-
-    return activeWorkspace.collections.find(
-      (wc) => normalizePath(wc.path) === normalizePath(collectionPath)
-    );
-  };
-
-  const shouldAssignDraggedCollectionToTargetFolder = (draggedItem) => {
-    const draggedPath = draggedItem.pathname || draggedItem.path;
-    const targetWorkspaceCollection = findWorkspaceCollectionByPath(collection.pathname);
-    const draggedWorkspaceCollection = findWorkspaceCollectionByPath(draggedPath);
-
-    if (!targetWorkspaceCollection?.group || !activeWorkspace?.uid) {
-      return false;
-    }
-
-    return draggedWorkspaceCollection?.group !== targetWorkspaceCollection.group;
-  };
 
   // Open the OpenAPI Sync tab
   const openOpenAPISyncTab = () => {
@@ -300,17 +278,12 @@ const Collection = ({ collection, searchText }) => {
       const itemType = monitor.getItemType();
       if (isCollectionItem(itemType)) {
         dispatch(handleCollectionItemDrop({ targetItem: collection, draggedItem, dropType: 'inside', collectionUid: collection.uid }));
-      } else if (shouldAssignDraggedCollectionToTargetFolder(draggedItem)) {
-        const draggedPath = draggedItem.pathname || draggedItem.path;
-        const targetWorkspaceCollection = findWorkspaceCollectionByPath(collection.pathname);
-        dispatch(assignCollectionToGroupAction(
-          activeWorkspace.uid,
-          draggedPath,
-          targetWorkspaceCollection.group,
-          draggedItem.uid
-        ));
       } else {
-        dispatch(moveCollectionAndPersist({ draggedItem, targetItem: collection }));
+        dispatch(moveWorkspaceCollectionAndPersist({
+          workspaceUid: activeWorkspace.uid,
+          draggedItem,
+          targetItem: collection
+        }));
       }
       setDropType(null);
     },

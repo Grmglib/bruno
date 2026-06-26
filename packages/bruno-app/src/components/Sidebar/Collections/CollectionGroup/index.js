@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import classnames from 'classnames';
 import { useDispatch } from 'react-redux';
-import { useDrop } from 'react-dnd';
+import { useDrag, useDrop } from 'react-dnd';
 import {
   IconChevronRight,
   IconDots,
@@ -20,6 +20,7 @@ import Modal from 'components/Modal';
 import {
   assignCollectionToGroupAction,
   deleteCollectionGroupAction,
+  moveCollectionGroupAndPersist,
   renameCollectionGroupAction
 } from 'providers/ReduxStore/slices/workspaces/actions';
 import { normalizePath } from 'utils/common/path';
@@ -52,6 +53,14 @@ const CollectionGroup = ({
   const [renameValue, setRenameValue] = useState(group.name);
   const [isSaving, setIsSaving] = useState(false);
   const [groupDeleteMode, setGroupDeleteMode] = useState(GROUP_DELETE_MODE.MOVE_TO_ROOT);
+
+  const [{ isDraggingGroup }, dragGroup] = useDrag({
+    type: 'collection-group',
+    item: { uid: group.uid },
+    collect: (monitor) => ({
+      isDraggingGroup: monitor.isDragging()
+    })
+  });
 
   const collectionsInFolder = useMemo(() => {
     return (workspaceCollections || []).filter((collection) => collection.group === group.uid);
@@ -109,7 +118,7 @@ const CollectionGroup = ({
   };
 
   const [{ isOverAssignTarget, canAssignToGroup }, dropAssignTarget] = useDrop({
-    accept: ['collection'],
+    accept: 'collection',
     canDrop: (draggedItem) => !isCollectionInThisGroup(draggedItem),
     drop: (draggedItem, monitor) => {
       if (monitor.didDrop()) {
@@ -123,11 +132,36 @@ const CollectionGroup = ({
     })
   });
 
+  const [{ isOverReorderTarget, canReorderGroup }, dropReorderTarget] = useDrop({
+    accept: 'collection-group',
+    canDrop: (draggedItem) => draggedItem.uid !== group.uid,
+    drop: (draggedItem, monitor) => {
+      if (monitor.didDrop()) {
+        return;
+      }
+      dispatch(moveCollectionGroupAndPersist({
+        workspaceUid,
+        draggedGroupUid: draggedItem.uid,
+        targetGroupUid: group.uid
+      }));
+    },
+    collect: (monitor) => ({
+      isOverReorderTarget: monitor.isOver({ shallow: true }),
+      canReorderGroup: monitor.canDrop()
+    })
+  });
+
   const connectAssignDropRef = useCallback((node) => {
     if (node) {
       dropAssignTarget(node);
     }
   }, [dropAssignTarget]);
+
+  const connectGroupRowRef = useCallback((node) => {
+    if (node) {
+      dragGroup(dropReorderTarget(node));
+    }
+  }, [dragGroup, dropReorderTarget]);
 
   useEffect(() => {
     if (isOverAssignTarget && canAssignToGroup && collapsed) {
@@ -182,20 +216,25 @@ const CollectionGroup = ({
   ];
 
   const showAssignDropHighlight = isOverAssignTarget && canAssignToGroup;
+  const showReorderDropHighlight = isOverReorderTarget && canReorderGroup;
 
   if (searchText && entries.length === 0) {
     return null;
   }
 
   return (
-    <StyledWrapper data-testid={`collection-group-${group.uid}`}>
+    <StyledWrapper ref={connectAssignDropRef} data-testid={`collection-group-${group.uid}`}>
       <div
-        ref={connectAssignDropRef}
         className={classnames('collection-group-header', {
-          'drop-target': showAssignDropHighlight
+          'drop-target': showAssignDropHighlight || showReorderDropHighlight
         })}
       >
-        <div className="flex py-1 collection-group-row items-center">
+        <div
+          ref={connectGroupRowRef}
+          className={classnames('flex py-1 collection-group-row items-center', {
+            'is-dragging': isDraggingGroup
+          })}
+        >
           <button
             type="button"
             className="flex items-center flex-grow min-w-0 text-left"
@@ -227,7 +266,6 @@ const CollectionGroup = ({
 
       {isExpanded && (
         <div
-          ref={connectAssignDropRef}
           className={classnames('collection-group-children', {
             'has-entries': entries.length > 0,
             'drop-target': showAssignDropHighlight && entries.length > 0
