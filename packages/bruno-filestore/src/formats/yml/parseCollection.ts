@@ -31,6 +31,32 @@ const parseCollection = (ymlString: string): ParsedCollection => {
       brunoConfig.ignore = brunoExtension.ignore;
     }
 
+    if (brunoExtension?.icon && typeof brunoExtension.icon === 'object') {
+      const icon = brunoExtension.icon;
+      if (icon.source === 'lucide' && typeof icon.name === 'string' && icon.name.length > 0) {
+        brunoConfig.icon = {
+          source: 'lucide',
+          name: icon.name
+        };
+      } else if (
+        icon.source === 'custom'
+        && typeof icon.name === 'string'
+        && icon.name.length > 0
+        && typeof icon.pack === 'string'
+        && icon.pack.length > 0
+      ) {
+        brunoConfig.icon = {
+          source: 'custom',
+          pack: icon.pack,
+          name: icon.name
+        };
+
+        if (typeof icon.format === 'string' && ['png', 'jpg', 'jpeg'].includes(icon.format)) {
+          brunoConfig.icon.format = icon.format;
+        }
+      }
+    }
+
     // presets
     if (brunoExtension?.presets) {
       const presets = brunoExtension.presets as BrunoPresetsExtension;

@@ -56,6 +56,7 @@ const { preferencesUtil, getPreferences, savePreferences } = require('./store/pr
 const { globalEnvironmentsManager } = require('./store/workspace-environments');
 const registerNotificationsIpc = require('./ipc/notifications');
 const registerGlobalEnvironmentsIpc = require('./ipc/global-environments');
+const registerIconsIpc = require('./ipc/icons');
 const TerminalManager = require('./ipc/terminal');
 const { safeParseJSON, safeStringifyJSON } = require('./utils/common');
 const { getDomainsWithCookies } = require('./utils/cookies');
@@ -475,6 +476,7 @@ app.on('ready', async () => {
   registerApiSpecIpc(mainWindow, apiSpecWatcher);
   registerNotificationsIpc(mainWindow, collectionWatcher);
   registerFilesystemIpc(mainWindow);
+  registerIconsIpc();
   registerSystemMonitorIpc(mainWindow, systemMonitor);
   registerGitIpc(mainWindow);
   registerOpenAPISyncIpc(mainWindow);

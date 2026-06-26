@@ -2349,6 +2349,27 @@ export const collectionsSlice = createSlice({
         set(collection, 'draft.brunoConfig.presets', action.payload.presets);
       }
     },
+    updateCollectionIcon: (state, action) => {
+      const collection = findCollectionByUid(state.collections, action.payload.collectionUid);
+
+      if (collection) {
+        if (!collection.draft) {
+          collection.draft = {
+            root: cloneDeep(collection.root),
+            brunoConfig: cloneDeep(collection.brunoConfig)
+          };
+        }
+        if (!collection.draft.brunoConfig) {
+          collection.draft.brunoConfig = cloneDeep(collection.brunoConfig);
+        }
+
+        if (action.payload.icon === null) {
+          delete collection.draft.brunoConfig.icon;
+        } else {
+          set(collection, 'draft.brunoConfig.icon', action.payload.icon);
+        }
+      }
+    },
     updateCollectionProtobuf: (state, action) => {
       const collection = findCollectionByUid(state.collections, action.payload.collectionUid);
 
@@ -4036,6 +4057,7 @@ export const {
   updateCollectionProxy,
   updateCollectionClientCertificates,
   updateCollectionPresets,
+  updateCollectionIcon,
   updateCollectionProtobuf,
   collectionAddFileEvent,
   collectionAddDirectoryEvent,

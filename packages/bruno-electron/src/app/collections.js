@@ -33,7 +33,21 @@ const configSchema = Yup.object({
       autoCheck: Yup.boolean().notRequired(),
       autoCheckInterval: Yup.number().notRequired()
     })
-  ).notRequired()
+  ).notRequired(),
+  icon: Yup.object({
+    source: Yup.string().oneOf(['lucide', 'custom']).required('icon source is required'),
+    name: Yup.string().min(1).required('icon name is required'),
+    pack: Yup.string().when('source', {
+      is: 'custom',
+      then: (schema) => schema.min(1).required('icon pack is required for custom icons'),
+      otherwise: (schema) => schema.notRequired()
+    }),
+    format: Yup.string().when('source', {
+      is: 'custom',
+      then: (schema) => schema.oneOf(['svg', 'png', 'jpg', 'jpeg']).notRequired(),
+      otherwise: (schema) => schema.notRequired()
+    })
+  }).nullable().notRequired().default(undefined)
 });
 
 const readConfigFile = async (pathname) => {

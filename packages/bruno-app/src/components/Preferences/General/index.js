@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import get from 'lodash/get';
 import debounce from 'lodash/debounce';
 import { useFormik } from 'formik';
@@ -9,12 +9,20 @@ import StyledWrapper from './StyledWrapper';
 import * as Yup from 'yup';
 import toast from 'react-hot-toast';
 import path from 'utils/common/path';
-import { IconTrash } from '@tabler/icons';
+import { IconTrash, IconFolder } from '@tabler/icons';
+import { getIconsFolderPath, openIconsFolder } from 'utils/icons';
 
 const General = () => {
   const preferences = useSelector((state) => state.app.preferences);
   const dispatch = useDispatch();
   const inputFileCaCertificateRef = useRef();
+  const [iconsFolderPath, setIconsFolderPath] = useState('');
+
+  useEffect(() => {
+    getIconsFolderPath()
+      .then((folderPath) => setIconsFolderPath(folderPath || ''))
+      .catch(() => setIconsFolderPath(''));
+  }, []);
 
   const preferencesSchema = Yup.object().shape({
     sslVerification: Yup.boolean(),
@@ -358,6 +366,32 @@ const General = () => {
         {formik.touched.autoSave?.interval && formik.errors.autoSave?.interval && (
           <div className="text-red-500">{formik.errors.autoSave.interval}</div>
         )}
+        <div className="flex flex-col mt-6">
+          <label className="block select-none" htmlFor="customIconsFolder">
+            Custom Collection Icons
+          </label>
+          <p className="text-muted mt-1 text-xs">
+            Add SVG, PNG, JPEG or JPG icon packs in subfolders. Each subfolder becomes a pack in the collection icon picker.
+          </p>
+          <input
+            type="text"
+            id="customIconsFolder"
+            className="block textbox mt-2 w-full cursor-default"
+            readOnly
+            value={iconsFolderPath}
+            data-testid="custom-icons-folder-path"
+          />
+          <div className="mt-1">
+            <span
+              className="text-link cursor-pointer hover:underline inline-flex items-center gap-1"
+              onClick={() => openIconsFolder()}
+              data-testid="open-custom-icons-folder"
+            >
+              <IconFolder size={14} strokeWidth={1.5} />
+              Open Icons Folder
+            </span>
+          </div>
+        </div>
         <div className="flex flex-col mt-6">
           <label className="block select-none default-location-label" htmlFor="defaultLocation">
             Default Location

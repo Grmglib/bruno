@@ -25,6 +25,8 @@ import {
   IconApps
 } from '@tabler/icons';
 import OpenAPISyncIcon from 'components/Icons/OpenAPISync';
+import CollectionIcon from 'components/CollectionIcon';
+import { getCollectionIconConfig } from 'utils/icons';
 import { toggleCollection, collapseFullCollection } from 'providers/ReduxStore/slices/collections';
 import { mountCollection, moveCollectionAndPersist, handleCollectionItemDrop, pasteItem, showInFolder, saveCollectionSecurityConfig } from 'providers/ReduxStore/slices/collections/actions';
 import { assignCollectionToGroupAction } from 'providers/ReduxStore/slices/workspaces/actions';
@@ -575,7 +577,13 @@ const Collection = ({ collection, searchText }) => {
               onDoubleClick={handleCollectionDoubleClick}
             />
           </ActionIcon>
-          <div className="ml-1 w-full" id="sidebar-collection-name" title={collection.name}>
+          <CollectionIcon
+            icon={getCollectionIconConfig(collection)}
+            size={14}
+            strokeWidth={1.5}
+            className="mx-1 flex-shrink-0"
+          />
+          <div className="w-full" id="sidebar-collection-name" title={collection.name}>
             {collection.name}
           </div>
           {isLoading ? <IconLoader2 className="animate-spin mx-1" size={18} strokeWidth={1.5} /> : null}

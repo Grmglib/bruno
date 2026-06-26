@@ -20,6 +20,8 @@ import {
   IconTransform
 } from '@tabler/icons';
 import OpenAPISyncIcon from 'components/Icons/OpenAPISync';
+import CollectionIcon from 'components/CollectionIcon';
+import { getCollectionIconConfig } from 'utils/icons';
 import { switchWorkspace, renameWorkspaceAction, exportWorkspaceAction, confirmWorkspaceCreation, cancelWorkspaceCreation } from 'providers/ReduxStore/slices/workspaces/actions';
 import { updateWorkspace } from 'providers/ReduxStore/slices/workspaces';
 import { showInFolder } from 'providers/ReduxStore/slices/collections/actions';
@@ -211,7 +213,28 @@ const CollectionHeader = ({ collection, isScratchCollection }) => {
     ? (currentWorkspace?.name || 'Untitled Workspace')
     : (collection.name || 'Untitled Collection');
 
-  const DisplayIcon = isScratchCollection ? IconCategory : IconBox;
+  const renderHeaderIcon = ({ onClick, className }) => {
+    if (isScratchCollection) {
+      return (
+        <IconCategory
+          size={18}
+          strokeWidth={1.5}
+          className={className}
+          onClick={onClick}
+        />
+      );
+    }
+
+    return (
+      <span className={className} onClick={onClick} role="button" tabIndex={0}>
+        <CollectionIcon
+          icon={getCollectionIconConfig(collection)}
+          size={18}
+          strokeWidth={1.5}
+        />
+      </span>
+    );
+  };
 
   // Switcher handlers
   const handleSwitchToWorkspace = (workspaceUid) => {
@@ -503,7 +526,7 @@ const CollectionHeader = ({ collection, isScratchCollection }) => {
         <div className="collection-switcher">
           {isRenamingWorkspace ? (
             <div className="workspace-rename-container" ref={workspaceRenameContainerRef}>
-              <DisplayIcon size={18} strokeWidth={1.5} className="cursor-pointer display-icon" />
+              {renderHeaderIcon({ className: 'cursor-pointer display-icon' })}
               <div className="workspace-input-wrapper">
                 <input
                   ref={workspaceNameInputRef}
@@ -552,7 +575,10 @@ const CollectionHeader = ({ collection, isScratchCollection }) => {
             </div>
           ) : (
             <div className="flex flex-row justify-center items-center gap-x-1">
-              <DisplayIcon size={18} strokeWidth={1.5} className="cursor-pointer display-icon" onClick={handleDisplayIconClick} />
+              {renderHeaderIcon({
+                className: 'cursor-pointer display-icon',
+                onClick: handleDisplayIconClick
+              })}
               <Dropdown
                 placement="bottom-start"
                 onCreate={onSwitcherCreate}

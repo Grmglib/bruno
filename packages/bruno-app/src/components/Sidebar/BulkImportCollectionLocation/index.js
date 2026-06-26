@@ -15,6 +15,7 @@ import Dropdown from 'components/Dropdown';
 import SelectionList from 'components/SelectionList';
 import { postmanToBruno } from 'utils/importers/postman-collection';
 import { convertInsomniaToBruno } from 'utils/importers/insomnia-collection';
+import { convertApidogToBruno, getApidogModuleCount } from 'utils/importers/apidog-collection';
 import { convertOpenapiToBruno } from 'utils/importers/openapi-collection';
 import { processBrunoCollection } from 'utils/importers/bruno-collection';
 import { wsdlToBruno } from '@usebruno/converters';
@@ -58,6 +59,11 @@ const getCollectionName = (format, rawData) => {
       }
       // Fallback to root name property
       return rawData.name || 'Insomnia Collection';
+    case 'apidog': {
+      const moduleCount = getApidogModuleCount(rawData);
+      const projectName = rawData.info?.name || 'Apidog Project';
+      return moduleCount > 0 ? `${projectName} (${moduleCount} modules)` : projectName;
+    }
     case 'bruno':
       return rawData.name || 'Bruno Collection';
     case 'wsdl':
@@ -89,6 +95,14 @@ const convertCollection = async (format, rawData, groupingType) => {
     case 'insomnia':
       collection = convertInsomniaToBruno(rawData);
       break;
+    case 'apidog': {
+      const apidogResult = convertApidogToBruno(rawData);
+      return {
+        collections: apidogResult.collections,
+        containerFolder: apidogResult.containerFolder,
+        issues: apidogResult.issues || []
+      };
+    }
     case 'bruno':
       collection = await processBrunoCollection(rawData);
       break;
@@ -300,6 +314,7 @@ export const BulkImportCollectionLocation = ({
     }),
     onSubmit: async (values) => {
       let filteredCollections = [];
+      const importPathByUid = {};
       const selectedItems = importedCollection.filter((col) => selectedCollections.includes(col.uid));
 
       if (isMultipleImport) {
@@ -307,12 +322,30 @@ export const BulkImportCollectionLocation = ({
         const collectedIssues = {};
         for (const item of selectedItems) {
           try {
-            const { collection, issues } = await convertCollection(item._fileData.type, item._fileData.data, groupingType);
+            const conversionResult = await convertCollection(item._fileData.type, item._fileData.data, groupingType);
+
+            if (item._fileData.type === 'apidog') {
+              const { collections, containerFolder, issues } = conversionResult;
+              const destPath = path.join(values.collectionLocation, containerFolder);
+
+              collections.forEach((collection, moduleIndex) => {
+                const moduleUid = `${item.uid}-module-${moduleIndex}`;
+                collection.uid = moduleUid;
+                filteredCollections.push(collection);
+                importPathByUid[moduleUid] = destPath;
+              });
+
+              if (issues && issues.length > 0) {
+                collectedIssues[item.uid] = issues;
+              }
+              continue;
+            }
+
+            const { collection, issues } = conversionResult;
             if (collection) {
-              // Preserve the synthetic UID so status tracking, rename tracking,
-              // and UI rendering all use the same key
               collection.uid = item.uid;
               filteredCollections.push(collection);
+              importPathByUid[item.uid] = values.collectionLocation;
               if (issues && issues.length > 0) {
                 collectedIssues[item.uid] = issues;
               }
@@ -474,15 +507,29 @@ export const BulkImportCollectionLocation = ({
 
       setImportStarted(true);
 
+      const groupedImports = filteredCollections.reduce((groups, collection) => {
+        const destPath = importPathByUid[collection.uid] || values.collectionLocation;
+        if (!groups[destPath]) {
+          groups[destPath] = [];
+        }
+        groups[destPath].push(collection);
+        return groups;
+      }, {});
+
+      const importGroups = Object.entries(groupedImports);
+
       if (filteredCollections.length > 1 || isBulkImport || isMultipleImport) {
-        dispatch(importCollection(filteredCollections, values.collectionLocation, { format: collectionFormat }))
-          .catch((err) => {
-            console.error('Failed to import collections', err);
-            filteredCollections.forEach((collection) => {
-              setStatus((prev) => ({ ...prev, [collection.uid]: STATUS.ERROR }));
-              setErrorMessages((prev) => ({ ...prev, [collection.uid]: err.message || 'Failed to import collection' }));
-            });
+        Promise.all(
+          importGroups.map(([destPath, collections]) =>
+            dispatch(importCollection(collections, destPath, { format: collectionFormat }))
+          )
+        ).catch((err) => {
+          console.error('Failed to import collections', err);
+          filteredCollections.forEach((collection) => {
+            setStatus((prev) => ({ ...prev, [collection.uid]: STATUS.ERROR }));
+            setErrorMessages((prev) => ({ ...prev, [collection.uid]: err.message || 'Failed to import collection' }));
           });
+        });
       } else {
         handleSubmit(filteredCollections[0], values.collectionLocation, { format: collectionFormat });
       }

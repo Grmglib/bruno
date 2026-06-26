@@ -11,6 +11,7 @@ import { BrunoError } from 'utils/common/error';
 import { isOpenApiSpec } from './openapi-collection';
 import { isPostmanCollection } from './postman-collection';
 import { isInsomniaCollection } from './insomnia-collection';
+import { isApidogCollection } from './apidog-collection';
 
 export const validateSchema = async (collections = []) => {
   collections = Array.isArray(collections) ? collections : [collections];
@@ -212,10 +213,10 @@ export const hydrateSeqInCollection = (collection) => {
 /**
  * Gets the schema type(postman, insomnia, openapi) of the CollectionJSON data
  * @param {Object} data - The JSON data to get the type of
- * @returns {'openapi' | 'postman' | 'insomnia' | 'unknown'} - The type of the CollectionJSON data
+ * @returns {'openapi' | 'postman' | 'insomnia' | 'apidog' | 'unknown'} - The type of the CollectionJSON data
  */
 const getCollectionSpecType = (data) => {
-  return isOpenApiSpec(data) ? 'openapi' : isPostmanCollection(data) ? 'postman' : isInsomniaCollection(data) ? 'insomnia' : 'unknown';
+  return isOpenApiSpec(data) ? 'openapi' : isPostmanCollection(data) ? 'postman' : isInsomniaCollection(data) ? 'insomnia' : isApidogCollection(data) ? 'apidog' : 'unknown';
 };
 
 export const fetchAndValidateApiSpecFromUrl = ({ url }) => {

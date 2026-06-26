@@ -4,10 +4,11 @@ import {
   IconSearch,
   IconX,
   IconFolder,
-  IconBox,
   IconFileText,
   IconBook
 } from '@tabler/icons';
+import CollectionIcon from 'components/CollectionIcon';
+import { getCollectionIconConfig } from 'utils/icons';
 import { flattenItems, isItemARequest, isItemAFolder, findParentItemInCollection } from 'utils/collections';
 import { addTab, focusTab } from 'providers/ReduxStore/slices/tabs';
 import { toggleCollectionItem, toggleCollection } from 'providers/ReduxStore/slices/collections';
@@ -348,14 +349,23 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
     };
   }, []);
 
-  const getResultIcon = (type) => {
+  const getResultIcon = (result) => {
+    if (result.type === SEARCH_TYPES.COLLECTION) {
+      return (
+        <CollectionIcon
+          icon={getCollectionIconConfig(result.item)}
+          size={18}
+          strokeWidth={1.5}
+        />
+      );
+    }
+
     const iconMap = {
       [SEARCH_TYPES.DOCUMENTATION]: IconBook,
-      [SEARCH_TYPES.COLLECTION]: IconBox,
       [SEARCH_TYPES.FOLDER]: IconFolder,
       [SEARCH_TYPES.REQUEST]: IconFileText
     };
-    const IconComponent = iconMap[type] || IconFileText;
+    const IconComponent = iconMap[result.type] || IconFileText;
     return <IconComponent size={18} stroke={1.5} />;
   };
 
@@ -465,7 +475,7 @@ const GlobalSearchModal = ({ isOpen, onClose }) => {
                     tabIndex={-1}
                   >
                     <div className="result-icon">
-                      {getResultIcon(result.type)}
+                      {getResultIcon(result)}
                     </div>
                     <div className="result-content">
                       <div className="result-info">

@@ -48,6 +48,7 @@ const actionsToIntercept = [
   'collections/updateAppCode',
   'collections/runRequestEvent',
   'collections/updateCollectionPresets',
+  'collections/updateCollectionIcon',
   'collections/setRequestVars',
   'collections/setRequestAssertions',
   'collections/updateItemSettings',

@@ -64,6 +64,26 @@ const hasPresets = (brunoConfig: any): boolean => {
     || brunoConfig?.presets?.requestUrl?.length;
 };
 
+const hasIcon = (brunoConfig: any): boolean => {
+  const icon = brunoConfig?.icon;
+  if (!icon || typeof icon !== 'object') {
+    return false;
+  }
+
+  if (icon.source === 'lucide') {
+    return typeof icon.name === 'string' && icon.name.length > 0;
+  }
+
+  if (icon.source === 'custom') {
+    return typeof icon.name === 'string'
+      && icon.name.length > 0
+      && typeof icon.pack === 'string'
+      && icon.pack.length > 0;
+  }
+
+  return false;
+};
+
 const stringifyCollection = (collectionRoot: any, brunoConfig: any): string => {
   try {
     const oc: OpenCollection = {};
@@ -223,10 +243,30 @@ const stringifyCollection = (collectionRoot: any, brunoConfig: any): string => {
     // extensions
     oc.extensions = {};
 
-    const hasBrunoExtensions = brunoConfig.ignore?.length || hasPresets(brunoConfig);
+    const hasBrunoExtensions = brunoConfig.ignore?.length || hasPresets(brunoConfig) || hasIcon(brunoConfig);
 
     if (hasBrunoExtensions) {
       const brunoExtension: any = {};
+
+      if (hasIcon(brunoConfig)) {
+        const icon = brunoConfig.icon;
+        if (icon.source === 'lucide') {
+          brunoExtension.icon = {
+            source: 'lucide',
+            name: icon.name
+          };
+        } else if (icon.source === 'custom') {
+          brunoExtension.icon = {
+            source: 'custom',
+            pack: icon.pack,
+            name: icon.name
+          };
+
+          if (icon.format && icon.format !== 'svg') {
+            brunoExtension.icon.format = icon.format;
+          }
+        }
+      }
 
       if (brunoConfig.ignore?.length) {
         const ignoreList: string[] = [];

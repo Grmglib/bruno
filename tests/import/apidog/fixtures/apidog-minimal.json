@@ -1,0 +1,150 @@
+{
+  "apidogProject": "1.0.0",
+  "$schema": {
+    "app": "apidog",
+    "type": "project",
+    "version": "1.2.0"
+  },
+  "info": {
+    "name": "Sample API Project"
+  },
+  "apiCollection": [
+    {
+      "name": "Root",
+      "moduleId": 950585,
+      "items": [
+        {
+          "name": "Auth",
+          "api": {
+            "method": "post",
+            "path": "/vehicle/token",
+            "parameters": {
+              "path": [],
+              "query": [],
+              "header": [
+                {
+                  "name": "Content-Type",
+                  "enable": true,
+                  "example": "application/x-www-form-urlencoded"
+                }
+              ]
+            },
+            "auth": {},
+            "requestBody": {
+              "type": "application/x-www-form-urlencoded",
+              "parameters": [
+                {
+                  "name": "client_id",
+                  "enable": true,
+                  "example": "{{clientId}}"
+                },
+                {
+                  "name": "client_secret",
+                  "enable": true,
+                  "example": "{{ClientSecret}}"
+                },
+                {
+                  "name": "grant_type",
+                  "enable": true,
+                  "example": "client_credentials"
+                }
+              ]
+            },
+            "postProcessors": [
+              {
+                "executionTiming": "prerequest",
+                "enable": true,
+                "data": "var jsonData = JSON.parse(responseBody);\r\npostman.setEnvironmentVariable(\"token\", jsonData[\"access_token\"]);",
+                "type": "customScript"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Consulta loja",
+          "api": {
+            "method": "post",
+            "path": "/vehicle/financing/search-store",
+            "parameters": {
+              "path": [],
+              "query": [],
+              "header": []
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": {
+                "token": "{{token}}"
+              }
+            },
+            "requestBody": {
+              "type": "application/json",
+              "examples": [
+                {
+                  "value": "{\n    \"cnpj\": \"17303092000181\",\n    \"cpf\": \"01654658405\"\n}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Root",
+      "moduleId": 950583,
+      "items": []
+    }
+  ],
+  "environments": [
+    {
+      "name": "Amb. de Desenv.",
+      "variables": [
+        {
+          "name": "token",
+          "value": "",
+          "initialValue": ""
+        }
+      ],
+      "baseUrl": "http://localhost/FIManager",
+      "baseUrls": {
+        "950585": "https://dev.example.com"
+      }
+    },
+    {
+      "name": "Amb. de Teste",
+      "variables": [
+        {
+          "name": "token",
+          "value": "",
+          "initialValue": ""
+        }
+      ],
+      "baseUrl": "https://test.example.com",
+      "baseUrls": {
+        "950585": "https://test.example.com"
+      }
+    }
+  ],
+  "moduleSettings": [
+    {
+      "id": "950585",
+      "name": "Billing",
+      "moduleVariables": [
+        {
+          "name": "clientId",
+          "value": "",
+          "initialValue": ""
+        },
+        {
+          "name": "ClientSecret",
+          "value": "",
+          "initialValue": ""
+        }
+      ]
+    },
+    {
+      "id": "950583",
+      "name": "Módulo predefinido",
+      "moduleVariables": []
+    }
+  ]
+}

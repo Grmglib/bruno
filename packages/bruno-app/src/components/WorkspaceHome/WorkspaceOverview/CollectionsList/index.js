@@ -11,6 +11,8 @@ import {
   IconUnlink,
   IconCopy
 } from '@tabler/icons';
+import CollectionIcon from 'components/CollectionIcon';
+import { getCollectionIconConfig } from 'utils/icons';
 import { addTab } from 'providers/ReduxStore/slices/tabs';
 import { mountCollection, showInFolder } from 'providers/ReduxStore/slices/collections/actions';
 import { getRevealInFolderLabel } from 'utils/common/platform';
@@ -276,7 +278,7 @@ const CollectionsList = ({ workspace }) => {
               <div className="collection-info">
                 <div className="collection-header">
                   <div className="collection-icon-wrapper">
-                    <IconBox size={18} strokeWidth={1.5} />
+                    <CollectionIcon icon={getCollectionIconConfig(collection)} size={18} strokeWidth={1.5} />
                   </div>
                   <div className="collection-name">{collection.name}</div>
                   {!isDefaultWorkspace && collection.isGitBacked && (

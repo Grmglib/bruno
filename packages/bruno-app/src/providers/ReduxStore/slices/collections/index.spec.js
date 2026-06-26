@@ -5,7 +5,8 @@ const {
   setFolderVars,
   setCollectionVars,
   collectionAddEnvFileEvent,
-  scriptEnvironmentUpdateEvent
+  scriptEnvironmentUpdateEvent,
+  updateCollectionIcon
 } = collectionsSlice.actions;
 const reducer = collectionsSlice.reducer;
 
@@ -181,5 +182,59 @@ describe('setCollectionVars — strips dataType: \'string\' (implicit default)',
     );
 
     assertGuardedVars(next.collections[0].draft.root.request.vars.req);
+  });
+});
+
+describe('updateCollectionIcon', () => {
+  const baseState = {
+    collections: [
+      {
+        uid: 'col1',
+        brunoConfig: {
+          name: 'Test Collection',
+          type: 'collection'
+        }
+      }
+    ]
+  };
+
+  it('stores a lucide icon in the collection draft', () => {
+    const next = reducer(
+      baseState,
+      updateCollectionIcon({
+        collectionUid: 'col1',
+        icon: { source: 'lucide', name: 'folder' }
+      })
+    );
+
+    expect(next.collections[0].draft.brunoConfig.icon).toEqual({
+      source: 'lucide',
+      name: 'folder'
+    });
+  });
+
+  it('removes the icon from the collection draft when cleared', () => {
+    const stateWithIcon = {
+      collections: [
+        {
+          uid: 'col1',
+          brunoConfig: {
+            name: 'Test Collection',
+            type: 'collection',
+            icon: { source: 'lucide', name: 'box' }
+          }
+        }
+      ]
+    };
+
+    const next = reducer(
+      stateWithIcon,
+      updateCollectionIcon({
+        collectionUid: 'col1',
+        icon: null
+      })
+    );
+
+    expect(next.collections[0].draft.brunoConfig.icon).toBeUndefined();
   });
 });

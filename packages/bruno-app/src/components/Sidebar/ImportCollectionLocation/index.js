@@ -8,6 +8,7 @@ import { IconCaretDown } from '@tabler/icons';
 import { browseDirectory } from 'providers/ReduxStore/slices/collections/actions';
 import { postmanToBruno } from 'utils/importers/postman-collection';
 import { convertInsomniaToBruno } from 'utils/importers/insomnia-collection';
+import { convertApidogToBruno, getApidogModuleCount, getApidogModuleNames, getApidogProjectFolderName } from 'utils/importers/apidog-collection';
 import { convertOpenapiToBruno } from 'utils/importers/openapi-collection';
 import { processBrunoCollection } from 'utils/importers/bruno-collection';
 import { processOpenCollection } from 'utils/importers/opencollection';
@@ -47,6 +48,11 @@ const getCollectionName = (format, rawData) => {
       return rawData.info?.name || 'OpenCollection';
     case 'wsdl':
       return 'WSDL Collection';
+    case 'apidog': {
+      const moduleCount = getApidogModuleCount(rawData);
+      const projectName = rawData.info?.name || 'Apidog Project';
+      return moduleCount > 0 ? `${projectName} (${moduleCount} modules)` : projectName;
+    }
     case 'bruno-zip':
       return rawData.collectionName || 'Bruno Collection';
     default:
@@ -77,6 +83,14 @@ const convertCollection = async (format, rawData, groupingType, collectionFormat
       case 'insomnia':
         collection = convertInsomniaToBruno(rawData);
         break;
+      case 'apidog': {
+        const apidogResult = convertApidogToBruno(rawData);
+        return {
+          collections: apidogResult.collections,
+          containerFolder: apidogResult.containerFolder,
+          issues: apidogResult.issues || []
+        };
+      }
       case 'bruno':
         collection = await processBrunoCollection(rawData);
         break;
@@ -114,6 +128,7 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
   const dropdownTippyRef = useRef();
   const optionsDropdownTippyRef = useRef();
   const isOpenApi = format === 'openapi';
+  const isApidog = format === 'apidog';
   const isZipImport = format === 'bruno-zip';
   const isOpenApiFromUrl = isOpenApi && !!sourceUrl && !filePath;
   const isOpenApiFromFile = isOpenApi && !!filePath && !sourceUrl;
@@ -130,6 +145,7 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
     : (activeWorkspace?.pathname ? path.join(activeWorkspace.pathname, 'collections') : '');
 
   const collectionName = getCollectionName(format, rawData);
+  const apidogModuleNames = isApidog ? getApidogModuleNames(rawData) : [];
 
   const formik = useFormik({
     enableReinitialize: true,
@@ -143,8 +159,34 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
         .required('Location is required')
     }),
     onSubmit: async (values) => {
-      const { collection: convertedCollection, issues } = await convertCollection(format, rawData, groupingType, collectionFormat);
+      const conversionResult = await convertCollection(format, rawData, groupingType, collectionFormat);
       const options = { format: collectionFormat };
+
+      if (isApidog) {
+        const { collections, containerFolder, issues } = conversionResult;
+        const destPath = path.join(values.collectionLocation, containerFolder);
+        handleSubmit(collections, destPath, options);
+
+        if (issues && issues.length > 0) {
+          showImportIssuesToast(issues);
+          const skipped = issues.filter((i) => i.severity === 'error').length;
+          const warnings = issues.filter((i) => i.severity === 'warning').length;
+          const parts = [];
+          if (skipped > 0) parts.push(`skipped ${skipped} item(s)`);
+          if (warnings > 0) parts.push(`${warnings} warning(s)`);
+          const timestamp = new Date().toISOString();
+          dispatch(addLog({ type: 'warn', args: [`Import: ${collectionName} — ${parts.join(', ')}`], timestamp }));
+          issues.forEach((issue) => {
+            const logType = issue.severity === 'error' ? 'error' : 'warn';
+            const logArgs = [`[${issue.path}] ${issue.message}`];
+            if (issue.sourceItem) logArgs.push(issue.sourceItem);
+            dispatch(addLog({ type: logType, args: logArgs, timestamp }));
+          });
+        }
+        return;
+      }
+
+      const { collection: convertedCollection, issues } = conversionResult;
 
       if (showCheckForSpecUpdatesOption && enableCheckForSpecUpdates) {
         const syncSourceUrl = sourceUrl || filePath; // URL or absolute path (backend converts to relative)
@@ -331,6 +373,20 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
                   Browse
                 </span>
               </div>
+
+              {isApidog && apidogModuleNames.length > 0 && (
+                <div className="mt-4 text-sm text-gray-600 dark:text-gray-300" data-testid="apidog-import-info">
+                  <p>
+                    {apidogModuleNames.length} collections will be created in the
+                    {' '}
+                    <strong>{getApidogProjectFolderName(rawData)}</strong>
+                    / folder:
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {apidogModuleNames.join(', ')}
+                  </p>
+                </div>
+              )}
 
               {showFileFormat && !isZipImport && (
                 <div className="mt-4">

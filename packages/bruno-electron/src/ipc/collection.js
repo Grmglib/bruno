@@ -1346,6 +1346,9 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
     let failedImports = 0;
     let successfulImports = [];
 
+    // Ensure the import destination exists (e.g. Apidog project subfolder)
+    fs.mkdirSync(collectionLocation, { recursive: true });
+
     for (let coll of collections) {
       try {
         // Sending a "started" and "ended" event to renderer to start and stop the spinner.
