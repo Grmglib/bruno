@@ -61,3 +61,59 @@ export const isGitRepositoryUrl = (url) => {
     return false;
   }
 };
+
+export const getWorkspaceGitData = async (workspacePath) => {
+  return await window.ipcRenderer.invoke('renderer:get-workspace-git-data', workspacePath);
+};
+
+export const initWorkspaceGit = async (workspacePath) => {
+  return await window.ipcRenderer.invoke('renderer:init-workspace-git', workspacePath);
+};
+
+export const stageWorkspaceGitFiles = async (workspacePath, files) => {
+  return await window.ipcRenderer.invoke('renderer:stage-workspace-git-files', { workspacePath, files });
+};
+
+export const unstageWorkspaceGitFiles = async (workspacePath, files) => {
+  return await window.ipcRenderer.invoke('renderer:unstage-workspace-git-files', { workspacePath, files });
+};
+
+export const commitWorkspaceGit = async (workspacePath, message) => {
+  return await window.ipcRenderer.invoke('renderer:commit-workspace-git', { workspacePath, message });
+};
+
+export const checkoutWorkspaceGitBranch = async ({ workspacePath, branchName, processUid, shouldCreate = false }) => {
+  return await window.ipcRenderer.invoke('renderer:checkout-workspace-git-branch', {
+    workspacePath,
+    branchName,
+    processUid,
+    shouldCreate
+  });
+};
+
+export const fetchWorkspaceGit = async ({ workspacePath, remote = 'origin' }) => {
+  return await window.ipcRenderer.invoke('renderer:fetch-workspace-git', { workspacePath, remote });
+};
+
+export const pullWorkspaceGit = async ({ workspacePath, remote = 'origin', remoteBranch, processUid, strategy = '--no-rebase' }) => {
+  return await window.ipcRenderer.invoke('renderer:pull-workspace-git', {
+    workspacePath,
+    remote,
+    remoteBranch,
+    processUid,
+    strategy
+  });
+};
+
+export const pushWorkspaceGit = async ({ workspacePath, remote = 'origin', remoteBranch, processUid }) => {
+  return await window.ipcRenderer.invoke('renderer:push-workspace-git', {
+    workspacePath,
+    remote,
+    remoteBranch,
+    processUid
+  });
+};
+
+export const getWorkspaceGitFileDiff = async ({ workspacePath, file }) => {
+  return await window.ipcRenderer.invoke('renderer:get-workspace-git-file-diff', { workspacePath, file });
+};

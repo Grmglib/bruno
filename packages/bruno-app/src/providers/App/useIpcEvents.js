@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import {
   updateCookies,
   updatePreferences,
-  setGitVersion
+  setGitVersion,
+  updateGitOperationProgress
 } from 'providers/ReduxStore/slices/app';
 import {
   addTab
@@ -344,6 +345,10 @@ const useIpcEvents = () => {
       dispatch(setGitVersion(val));
     });
 
+    const gitProgressListener = ipcRenderer.on('main:update-git-operation-progress', (val) => {
+      dispatch(updateGitOperationProgress(val));
+    });
+
     const removeLoadNotificationsListener = ipcRenderer.on('main:load-notifications', (notifications) => {
       dispatch(loadNotifications(notifications));
     });
@@ -396,6 +401,7 @@ const useIpcEvents = () => {
       removePersistentEnvVariablesUpdateListener();
       removeSystemResourcesListener();
       gitVersionListener();
+      gitProgressListener();
       removeLoadNotificationsListener();
     };
   }, [isElectron]);

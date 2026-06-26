@@ -1,9 +1,11 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import get from 'lodash/get';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   IconArrowsSort,
+  IconBrandGit,
+  IconBox,
   IconDotsVertical,
   IconDownload,
   IconFolder,
@@ -13,7 +15,6 @@ import {
   IconSortAscendingLetters,
   IconSortDescendingLetters,
   IconSquareX,
-  IconBox,
   IconTerminal2
 } from '@tabler/icons';
 
@@ -39,8 +40,10 @@ import WelcomeModal from 'components/WelcomeModal';
 import Collections from 'components/Sidebar/Collections';
 import NewCollectionGroupModal from 'components/Sidebar/Collections/NewCollectionGroupModal';
 import SidebarSection from 'components/Sidebar/SidebarSection';
+import GitSection from 'components/Sidebar/Sections/GitSection';
 import { openDevtoolsAndSwitchToTerminal } from 'utils/terminal';
 import useKeybinding from 'hooks/useKeybinding';
+import StyledWrapper from './StyledWrapper';
 
 const CollectionsSection = () => {
   const dispatch = useDispatch();
@@ -63,6 +66,7 @@ const CollectionsSection = () => {
   const [showCloneGitModal, setShowCloneGitModal] = useState(false);
   const [gitRepositoryUrl, setGitRepositoryUrl] = useState(null);
   const [showNewCollectionGroupModal, setShowNewCollectionGroupModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('collections');
   const { postmanPackagePrompt, clearPostmanPackagePrompt, handleImportResolved } = usePostmanPackagePrompt();
 
   // Import collection shortcut
@@ -309,7 +313,7 @@ const CollectionsSection = () => {
     }
   ];
 
-  const sectionActions = (
+  const collectionsActions = (
     <>
       <ActionIcon
         onClick={handleToggleSearch}
@@ -347,6 +351,10 @@ const CollectionsSection = () => {
       )}
     </>
   );
+
+  const sectionActions = activeTab === 'collections' ? collectionsActions : null;
+  const sectionTitle = activeTab === 'collections' ? 'Collections' : 'Git';
+  const sectionIcon = activeTab === 'collections' ? IconBox : IconBrandGit;
 
   return (
     <>
@@ -427,17 +435,47 @@ const CollectionsSection = () => {
       )}
       <SidebarSection
         id="collections"
-        title="Collections"
-        icon={IconBox}
+        title={sectionTitle}
+        icon={sectionIcon}
         actions={sectionActions}
       >
-        <Collections
-          showSearch={showSearch}
-          isCreatingCollection={isCreatingCollection}
-          onCreateClick={() => dispatch(setIsCreatingCollection(true))}
-          onDismissCreate={() => dispatch(setIsCreatingCollection(false))}
-          onOpenAdvancedCreate={handleOpenAdvancedCreate}
-        />
+        <StyledWrapper>
+          <div className="sidebar-tabs">
+            <button
+              type="button"
+              className={`sidebar-tab ${activeTab === 'collections' ? 'active' : ''}`}
+              onClick={() => setActiveTab('collections')}
+              data-testid="sidebar-tab-collections"
+            >
+              <span className="sidebar-tab-label">Collections</span>
+            </button>
+            <button
+              type="button"
+              className={`sidebar-tab ${activeTab === 'git' ? 'active' : ''}`}
+              onClick={() => setActiveTab('git')}
+              data-testid="sidebar-tab-git"
+            >
+              <span className="sidebar-tab-label">
+                <IconBrandGit size={12} stroke={1.5} />
+                Git
+              </span>
+            </button>
+          </div>
+
+          <div className="sidebar-tab-content">
+            {activeTab === 'collections' ? (
+              <Collections
+                showSearch={showSearch}
+                isCreatingCollection={isCreatingCollection}
+                onCreateClick={() => dispatch(setIsCreatingCollection(true))}
+                onDismissCreate={() => dispatch(setIsCreatingCollection(false))}
+                onOpenAdvancedCreate={handleOpenAdvancedCreate}
+              />
+            ) : (
+              <GitSection embedded />
+            )}
+          </div>
+        </StyledWrapper>
       </SidebarSection>
     </>
   );

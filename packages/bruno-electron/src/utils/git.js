@@ -1,7 +1,7 @@
 const simpleGit = require('simple-git');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const { parseRequest } = require('@usebruno/filestore');
 
 let collectionPathToGitRootPathMap = new Map();
@@ -29,6 +29,81 @@ const getSimpleGitInstanceForPath = (gitRootPath) => {
   return git;
 };
 
+const runGitCommand = (gitRootPath, args) => {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { cwd: gitRootPath, windowsHide: true }, (error, stdout, stderr) => {
+      if (error) {
+        const message = stderr?.trim() || stdout?.trim() || error.message;
+        reject(new Error(message));
+        return;
+      }
+
+      resolve({
+        stdout: stdout?.trim() || '',
+        stderr: stderr?.trim() || ''
+      });
+    });
+  });
+};
+
+const normalizeGitFilePath = (gitRootPath, filePath) => {
+  if (!filePath || typeof filePath !== 'string') {
+    return filePath;
+  }
+
+  const relativePath = path.isAbsolute(filePath)
+    ? path.relative(gitRootPath, filePath)
+    : filePath;
+
+  return relativePath.replace(/\\/g, '/');
+};
+
+const isEmbeddedGitRepositoryPath = (gitRootPath, normalizedPath) => {
+  if (!normalizedPath) {
+    return false;
+  }
+
+  const fullPath = path.join(gitRootPath, normalizedPath);
+  try {
+    if (!fs.existsSync(fullPath)) {
+      return false;
+    }
+
+    const stat = fs.statSync(fullPath);
+    if (!stat.isDirectory()) {
+      return false;
+    }
+
+    return fs.existsSync(path.join(fullPath, '.git'));
+  } catch (err) {
+    return false;
+  }
+};
+
+const splitGitPathChunks = (paths = [], maxChunkChars = 7000) => {
+  const chunks = [];
+  let currentChunk = [];
+  let currentLength = 0;
+
+  paths.forEach((filePath) => {
+    const nextLength = currentLength + filePath.length + 1;
+    if (currentChunk.length > 0 && nextLength > maxChunkChars) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentLength = 0;
+    }
+
+    currentChunk.push(filePath);
+    currentLength += filePath.length + 1;
+  });
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+};
+
 const handleGitOutput = ({ win, processUid, sendStdout = false }) => (command, stdout, stderr) => {
   const sendProgressUpdate = (data) => {
     win.webContents.send('main:update-git-operation-progress', {
@@ -37,10 +112,28 @@ const handleGitOutput = ({ win, processUid, sendStdout = false }) => (command, s
     });
   };
 
-  stderr.on('data', sendProgressUpdate);
+  const sendConsoleLog = (data) => {
+    const message = data?.toString?.();
+    if (!message?.trim()) {
+      return;
+    }
+
+    win.webContents.send('main:console-log', {
+      type: 'log',
+      args: [message.trimEnd()]
+    });
+  };
+
+  stderr.on('data', (data) => {
+    sendProgressUpdate(data);
+    sendConsoleLog(data);
+  });
 
   if (sendStdout) {
-    stdout.on('data', sendProgressUpdate);
+    stdout.on('data', (data) => {
+      sendProgressUpdate(data);
+      sendConsoleLog(data);
+    });
   }
 };
 
@@ -94,56 +187,47 @@ const initGit = async (gitRootPath) => {
 };
 
 const stageChanges = async (gitRootPath, files) => {
-  return new Promise((resolve, reject) => {
-    const git = getSimpleGitInstanceForPath(gitRootPath);
-    git.add(files, (err, res) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(res);
-    });
-  });
+  const normalizedFiles = [...new Set(
+    (files || [])
+      .map((filePath) => normalizeGitFilePath(gitRootPath, filePath))
+      .filter((filePath) => !isEmbeddedGitRepositoryPath(gitRootPath, filePath))
+      .filter(Boolean)
+  )];
+
+  if (!normalizedFiles.length) {
+    return;
+  }
+
+  const chunks = splitGitPathChunks(normalizedFiles);
+  for (const chunk of chunks) {
+    await runGitCommand(gitRootPath, ['add', '--', ...chunk]);
+  }
 };
 
 const unstageChanges = async (gitRootPath, files) => {
-  return new Promise((resolve, reject) => {
-    const git = getSimpleGitInstanceForPath(gitRootPath);
+  const git = getSimpleGitInstanceForPath(gitRootPath);
+  const status = await git.status(['--porcelain']);
+  const normalizedFiles = [...new Set(
+    (files || [])
+      .map((filePath) => normalizeGitFilePath(gitRootPath, filePath))
+      .filter(Boolean)
+  )];
 
-    // First check the status to see which files are actually staged
-    git.status(['--porcelain'], (err, status) => {
-      if (err) {
-        reject(err);
-        return;
-      }
+  const stagedFiles = normalizedFiles.filter((normalizedPath) => (
+    status.files.some((file) =>
+      file.path === normalizedPath
+      && (file.index === 'M' || file.index === 'A' || file.index === 'D')
+    )
+  ));
 
-      // Filter files to only include those that are actually staged
-      const stagedFiles = files.filter((fullPath) => {
-        const relativePath = path.relative(gitRootPath, fullPath);
-        // Normalize path separators for cross-platform compatibility
-        const normalizedPath = relativePath.replace(/\\/g, '/');
-        return status.files.some((file) =>
-          file.path === normalizedPath
-          && (file.index === 'M' || file.index === 'A' || file.index === 'D')
-        );
-      });
+  if (!stagedFiles.length) {
+    return;
+  }
 
-      // If no files are actually staged, just resolve
-      if (stagedFiles.length === 0) {
-        resolve();
-        return;
-      }
-
-      // Unstage only the files that are actually staged
-      git.reset(['HEAD', '--', ...stagedFiles], (err, res) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve(res);
-      });
-    });
-  });
+  const chunks = splitGitPathChunks(stagedFiles);
+  for (const chunk of chunks) {
+    await git.reset(['HEAD', '--', ...chunk]);
+  }
 };
 
 const discardChanges = async (gitRootPath, filePaths) => {
@@ -556,51 +640,32 @@ const canPush = async (gitRootPath) => {
 };
 
 const pushGitChanges = async (win, { gitRootPath, processUid, remote, remoteBranch }) => {
-  return new Promise(async (resolve, reject) => {
-    const git = getSimpleGitInstanceForPath(gitRootPath);
-    git.outputHandler(handleGitOutput({ win, processUid, sendStdout: true }));
+  const git = getSimpleGitInstanceForPath(gitRootPath);
+  git.outputHandler(handleGitOutput({ win, processUid, sendStdout: true }));
 
-    try {
-      // Check if the local branch is tracking a remote branch
-      git.branch((err, branchSummary) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+  const branchSummary = await git.branchLocal();
+  const effectiveBranch = remoteBranch || branchSummary.current;
 
-        const currentBranch = branchSummary.branches[remoteBranch];
+  if (!effectiveBranch) {
+    throw new Error('Unable to determine the current branch for push');
+  }
 
-        if (!currentBranch) {
-          reject(new Error(`Branch ${remoteBranch} does not exist.`));
-          return;
-        }
+  const currentBranch = branchSummary.branches[effectiveBranch];
+  if (!currentBranch) {
+    throw new Error(`Branch ${effectiveBranch} does not exist.`);
+  }
 
-        const trackingBranch = currentBranch.tracking;
+  const remotes = await git.getRemotes(true);
+  const hasRemote = remotes.some((entry) => entry.name === remote);
+  if (!hasRemote) {
+    throw new Error(`Remote ${remote} is not configured.`);
+  }
 
-        if (!trackingBranch) {
-          // Set the upstream tracking branch
-          git.push(['--set-upstream', remote, remoteBranch], (err, res) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(res);
-            }
-          });
-        } else {
-          // Push the local branch to the remote
-          git.push(remote, remoteBranch, (err, res) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(res);
-            }
-          });
-        }
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
+  if (!currentBranch.tracking) {
+    return await git.push(['--set-upstream', remote, `HEAD:${effectiveBranch}`]);
+  }
+
+  return await git.push(remote, effectiveBranch);
 };
 
 const pullGitChanges = async (win, data) => {
@@ -702,6 +767,83 @@ const getCollectionGitData = async (gitRootPath, collectionPath) => {
     currentGitBranch,
     defaultGitBranch,
     logs
+  };
+};
+
+const getWorkspaceGitData = async (workspacePath) => {
+  const gitRootPath = getCollectionGitRootPath(workspacePath);
+
+  if (!gitRootPath) {
+    return {
+      isGitRepository: false,
+      gitRootPath: null,
+      gitRepoUrl: null,
+      branches: [],
+      currentGitBranch: null,
+      defaultGitBranch: null,
+      logs: [],
+      remotes: [],
+      staged: [],
+      unstaged: [],
+      conflicted: [],
+      totalFiles: 0,
+      tooManyFiles: false,
+      ahead: 0,
+      behind: 0,
+      aheadCommits: [],
+      behindCommits: []
+    };
+  }
+
+  const safeResult = async (fn, fallback) => {
+    try {
+      return await fn();
+    } catch (err) {
+      return fallback;
+    }
+  };
+
+  const [branches, currentGitBranch, defaultGitBranch, logs, status, remotes, aheadBehind] = await Promise.all([
+    safeResult(() => getCollectionGitBranches(gitRootPath), []),
+    safeResult(() => getCurrentGitBranch(gitRootPath), null),
+    safeResult(() => getDefaultGitBranch(gitRootPath), null),
+    safeResult(() => getCollectionGitLogs(gitRootPath), []),
+    safeResult(() => getChangedFilesInCollectionGit(gitRootPath, workspacePath), {
+      staged: [],
+      unstaged: [],
+      conflicted: [],
+      totalFiles: 0,
+      tooManyFiles: false
+    }),
+    safeResult(() => fetchRemotes(gitRootPath), []),
+    safeResult(() => getAheadBehindCount(gitRootPath), {
+      ahead: 0,
+      behind: 0,
+      aheadCommits: [],
+      behindCommits: []
+    })
+  ]);
+
+  const originRemote = remotes.find((remote) => remote.name === 'origin');
+
+  return {
+    isGitRepository: true,
+    gitRootPath,
+    gitRepoUrl: originRemote?.refs?.fetch || remotes[0]?.refs?.fetch || null,
+    branches,
+    currentGitBranch,
+    defaultGitBranch,
+    logs,
+    remotes,
+    staged: status.staged || [],
+    unstaged: status.unstaged || [],
+    conflicted: status.conflicted || [],
+    totalFiles: status.totalFiles || 0,
+    tooManyFiles: Boolean(status.tooManyFiles),
+    ahead: aheadBehind.ahead || 0,
+    behind: aheadBehind.behind || 0,
+    aheadCommits: aheadBehind.aheadCommits || [],
+    behindCommits: aheadBehind.behindCommits || []
   };
 };
 
@@ -1779,6 +1921,7 @@ module.exports = {
   pullGitChanges,
   initGit,
   getCollectionGitData,
+  getWorkspaceGitData,
   getStagedFileDiff,
   getUnstagedFileDiff,
   getRenamedFileDiff,
