@@ -31,7 +31,7 @@ const WorkspaceOverview = ({ workspace }) => {
 
   const workspaceEnvironmentsCount = globalEnvironments?.length || 0;
 
-  const handleCreateCollection = async () => {
+  const handleCreateCollection = () => {
     if (isCreatingCollection) {
       return;
     }
@@ -41,17 +41,10 @@ const WorkspaceOverview = ({ workspace }) => {
       return;
     }
 
-    try {
-      const { ipcRenderer } = window;
-      await ipcRenderer.invoke('renderer:ensure-collections-folder', workspace.pathname);
-      if (sidebarCollapsed) {
-        dispatch(toggleSidebarCollapse());
-      }
-      dispatch(setIsCreatingCollection(true));
-    } catch (error) {
-      console.error('Error ensuring collections folder exists:', error);
-      toast.error('Error preparing workspace for collection creation');
+    if (sidebarCollapsed) {
+      dispatch(toggleSidebarCollapse());
     }
+    dispatch(setIsCreatingCollection(true));
   };
 
   const handleOpenCollection = () => {

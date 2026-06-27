@@ -72,6 +72,31 @@ export const safeParseXML = (str, options) => {
   }
 };
 
+export const getRawResponseText = (data, dataBufferInput) => {
+  if (dataBufferInput) {
+    try {
+      if (typeof dataBufferInput === 'string') {
+        return Buffer.from(dataBufferInput, 'base64').toString();
+      }
+
+      if (Buffer.isBuffer(dataBufferInput)) {
+        return dataBufferInput.toString('utf8');
+      }
+    } catch (error) {}
+  }
+
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (data === null || data === undefined) {
+    return String(data);
+  }
+
+  const stringified = safeStringifyJSON(data, false);
+  return typeof stringified === 'string' ? stringified : String(data);
+};
+
 // Remove any characters that are not alphanumeric, spaces, hyphens, or underscores
 export const normalizeFileName = (name) => {
   if (!name) {
@@ -299,7 +324,7 @@ export const formatResponse = (data, dataBufferString, mode, filter, bufferThres
     } catch (error) {}
 
     if (isVeryLargeResponse) {
-      return safeStringifyJSON(data, false);
+      return getRawResponseText(data, dataBufferString);
     }
 
     try {
@@ -316,7 +341,7 @@ export const formatResponse = (data, dataBufferString, mode, filter, bufferThres
 
   if (mode.includes('xml')) {
     if (isVeryLargeResponse) {
-      return typeof data === 'string' ? data : safeStringifyJSON(data, false);
+      return getRawResponseText(data, dataBufferString);
     }
 
     let parsed = safeParseXML(data, { collapseContent: true });
@@ -328,16 +353,7 @@ export const formatResponse = (data, dataBufferString, mode, filter, bufferThres
 
   if (mode.includes('html')) {
     if (isVeryLargeResponse) {
-      if (typeof data === 'string') {
-        return data;
-      }
-      if (data === null || data === undefined) {
-        return String(data);
-      }
-      if (typeof data === 'object') {
-        return safeStringifyJSON(data, false);
-      }
-      return String(data);
+      return getRawResponseText(data, dataBufferString);
     }
 
     // Get HTML string from rawData
@@ -352,16 +368,7 @@ export const formatResponse = (data, dataBufferString, mode, filter, bufferThres
 
   if (mode.includes('javascript')) {
     if (isVeryLargeResponse) {
-      if (typeof data === 'string') {
-        return data;
-      }
-      if (data === null || data === undefined) {
-        return String(data);
-      }
-      if (typeof data === 'object') {
-        return safeStringifyJSON(data, false);
-      }
-      return String(data);
+      return getRawResponseText(data, dataBufferString);
     }
 
     // Get JavaScript string from rawData

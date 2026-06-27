@@ -26,7 +26,6 @@ import CollectionApp from 'components/CollectionApp';
 import StyledWrapper from './StyledWrapper';
 import FolderSettings from 'components/FolderSettings';
 import { getGlobalEnvironmentVariables, getGlobalEnvironmentVariablesMasked } from 'utils/collections/index';
-import { produce } from 'immer';
 import CollectionOverview from 'components/CollectionSettings/Overview';
 import RequestNotLoaded from './RequestNotLoaded';
 import RequestIsLoading from './RequestIsLoading';
@@ -60,6 +59,47 @@ const EXPAND_EDGE_THRESHOLD = 100;
 // Minimum response pane height to show placeholder content on click-expand
 const RESPONSE_EXPAND_MIN_HEIGHT = 300;
 
+const ResponsePaneContent = React.memo(({ item, collection }) => {
+  switch (item.type) {
+    case 'grpc-request':
+      return <GrpcResponsePane item={item} collection={collection} response={item.response} />;
+    case 'ws-request':
+      return <WSResponsePane item={item} collection={collection} response={item.response} />;
+    default:
+      return <ResponsePane item={item} collection={collection} response={item.response} />;
+  }
+}, (prevProps, nextProps) => {
+  const prevItem = prevProps.item;
+  const nextItem = nextProps.item;
+  const prevCollection = prevProps.collection;
+  const nextCollection = nextProps.collection;
+
+  return prevItem?.uid === nextItem?.uid
+    && prevItem?.type === nextItem?.type
+    && prevItem?.filename === nextItem?.filename
+    && prevItem?.pathname === nextItem?.pathname
+    && prevItem?.status === nextItem?.status
+    && prevItem?.requestState === nextItem?.requestState
+    && prevItem?.requestSent === nextItem?.requestSent
+    && prevItem?.response === nextItem?.response
+    && prevItem?.preRequestScriptErrorMessage === nextItem?.preRequestScriptErrorMessage
+    && prevItem?.postResponseScriptErrorMessage === nextItem?.postResponseScriptErrorMessage
+    && prevItem?.testScriptErrorMessage === nextItem?.testScriptErrorMessage
+    && prevItem?.testResults === nextItem?.testResults
+    && prevItem?.assertionResults === nextItem?.assertionResults
+    && prevItem?.preRequestTestResults === nextItem?.preRequestTestResults
+    && prevItem?.postResponseTestResults === nextItem?.postResponseTestResults
+    && prevItem?.request?.auth === nextItem?.request?.auth
+    && prevItem?.draft?.request?.auth === nextItem?.draft?.request?.auth
+    && prevItem?.root?.request?.auth === nextItem?.root?.request?.auth
+    && prevCollection?.uid === nextCollection?.uid
+    && prevCollection?.timeline === nextCollection?.timeline
+    && prevCollection?.root?.request?.auth === nextCollection?.root?.request?.auth
+    && prevCollection?.draft?.root?.request?.auth === nextCollection?.draft?.root?.request?.auth;
+});
+
+ResponsePaneContent.displayName = 'ResponsePaneContent';
+
 const RequestTabPanel = () => {
   const dispatch = useDispatch();
   const tabs = useSelector((state) => state.tabs.tabs);
@@ -87,23 +127,29 @@ const RequestTabPanel = () => {
     isVerticalLayoutRef.current = isVerticalLayout;
   }, [isVerticalLayout]);
 
-  // merge `globalEnvironmentVariables` into the active collection and rebuild `collections` immer proxy object
-  const collections = produce(_collections, (draft) => {
-    const collection = find(draft, (c) => c.uid === focusedTab?.collectionUid);
-
-    if (collection) {
-      // add selected global env variables to the collection object
-      const globalEnvironmentVariables = getGlobalEnvironmentVariables({
-        globalEnvironments,
-        activeGlobalEnvironmentUid
-      });
-      const globalEnvSecrets = getGlobalEnvironmentVariablesMasked({ globalEnvironments, activeGlobalEnvironmentUid });
-      collection.globalEnvironmentVariables = globalEnvironmentVariables;
-      collection.globalEnvSecrets = globalEnvSecrets;
+  const selectedCollection = useMemo(
+    () => find(_collections, (c) => c.uid === focusedTab?.collectionUid),
+    [_collections, focusedTab?.collectionUid]
+  );
+  const globalEnvironmentVariables = useMemo(() => getGlobalEnvironmentVariables({
+    globalEnvironments,
+    activeGlobalEnvironmentUid
+  }), [globalEnvironments, activeGlobalEnvironmentUid]);
+  const globalEnvSecrets = useMemo(() => getGlobalEnvironmentVariablesMasked({
+    globalEnvironments,
+    activeGlobalEnvironmentUid
+  }), [globalEnvironments, activeGlobalEnvironmentUid]);
+  const collection = useMemo(() => {
+    if (!selectedCollection) {
+      return selectedCollection;
     }
-  });
 
-  const collection = find(collections, (c) => c.uid === focusedTab?.collectionUid);
+    return {
+      ...selectedCollection,
+      globalEnvironmentVariables,
+      globalEnvSecrets
+    };
+  }, [selectedCollection, globalEnvironmentVariables, globalEnvSecrets]);
 
   const isItemsLoading = useMemo(() => {
     return collection?.mountStatus === 'mounting' || areItemsLoading(collection);
@@ -553,17 +599,6 @@ const RequestTabPanel = () => {
     }
   };
 
-  const renderResponsePane = () => {
-    switch (item.type) {
-      case 'grpc-request':
-        return <GrpcResponsePane item={item} collection={collection} response={item.response} />;
-      case 'ws-request':
-        return <WSResponsePane item={item} collection={collection} response={item.response} />;
-      default:
-        return <ResponsePane item={item} collection={collection} response={item.response} />;
-    }
-  };
-
   const getRequestPaneStyle = () => {
     if (responsePaneCollapsed) {
       return isVerticalLayout
@@ -631,7 +666,7 @@ const RequestTabPanel = () => {
             />
           ) : (
             <section className="response-pane flex-grow overflow-x-auto" data-testid="response-pane" style={requestPaneCollapsed ? { flex: 1 } : undefined}>
-              {renderResponsePane()}
+              <ResponsePaneContent item={item} collection={collection} />
             </section>
           )}
         </section>

@@ -2,7 +2,6 @@ import React, { useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import path from 'utils/common/path';
 import { browseDirectory } from 'providers/ReduxStore/slices/collections/actions';
 import { cloneCollection } from 'providers/ReduxStore/slices/collections/actions';
 import toast from 'react-hot-toast';
@@ -14,6 +13,7 @@ import { useState } from 'react';
 import { IconArrowBackUp, IconEdit } from '@tabler/icons';
 import { findCollectionByUid } from 'utils/collections/index';
 import get from 'lodash/get';
+import useDefaultCollectionLocation from 'hooks/useDefaultCollectionLocation';
 
 const CloneCollection = ({ onClose, collectionUid }) => {
   const inputRef = useRef();
@@ -25,10 +25,8 @@ const CloneCollection = ({ onClose, collectionUid }) => {
   const workspaceUid = useSelector((state) => state.workspaces?.activeWorkspaceUid);
   const activeWorkspace = workspaces.find((w) => w.uid === workspaceUid);
   const isDefaultWorkspace = activeWorkspace?.type === 'default';
-
-  const defaultLocation = isDefaultWorkspace
-    ? get(preferences, 'general.defaultLocation', '')
-    : (activeWorkspace?.pathname ? path.join(activeWorkspace.pathname, 'collections') : '');
+  const preferencesDefaultLocation = get(preferences, 'general.defaultLocation', '');
+  const defaultLocation = useDefaultCollectionLocation(activeWorkspace, isDefaultWorkspace, preferencesDefaultLocation);
   const { name } = collection;
 
   const formik = useFormik({

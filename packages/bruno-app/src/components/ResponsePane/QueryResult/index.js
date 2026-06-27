@@ -1,8 +1,8 @@
 import { debounce } from 'lodash';
 import { useTheme } from 'providers/Theme/index';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { formatResponse, getContentType } from 'utils/common';
-import { getDefaultResponseFormat, detectContentTypeFromBase64 } from 'utils/response';
+import { getDefaultResponseFormat, detectContentTypeFromBase64, getResponsePerformanceProfile } from 'utils/response';
 import LargeResponseWarning from '../LargeResponseWarning';
 import QueryResultFilter from './QueryResultFilter';
 import QueryResultPreview from './QueryResultPreview';
@@ -107,7 +107,12 @@ const QueryResult = ({
 }) => {
   const contentType = getContentType(headers);
   const [showLargeResponse, setShowLargeResponse] = useState(false);
+  const [forceFullRender, setForceFullRender] = useState(false);
   const { displayedTheme } = useTheme();
+  const isTextualFormat = useMemo(
+    () => ['json', 'html', 'xml', 'javascript', 'raw'].includes(selectedFormat),
+    [selectedFormat]
+  );
 
   const responseSize = useMemo(() => {
     const response = item.response || {};
@@ -122,20 +127,37 @@ const QueryResult = ({
     return 0;
   }, [dataBuffer, item.response]);
 
-  const isLargeResponse = responseSize > 10 * 1024 * 1024; // 10 MB
+  const responsePerformanceProfile = useMemo(() => getResponsePerformanceProfile({
+    data,
+    dataBuffer,
+    responseSize,
+    isTextual: isTextualFormat
+  }), [data, dataBuffer, responseSize, isTextualFormat]);
+  const isLargeResponse = responsePerformanceProfile.shouldWarnBeforeRender;
+  const shouldUseSimplifiedView = responsePerformanceProfile.shouldUseSimplifiedView;
+  const useSimplifiedView = shouldUseSimplifiedView && !forceFullRender;
+
+  useEffect(() => {
+    setForceFullRender(false);
+  }, [dataBuffer, selectedFormat]);
 
   const detectedContentType = useMemo(() => {
     return detectContentTypeFromBase64(dataBuffer);
-  }, [dataBuffer, isLargeResponse]);
+  }, [dataBuffer]);
 
   const formattedData = useMemo(
     () => {
+      if (useSimplifiedView) {
+        return '';
+      }
+
       if (isLargeResponse && !showLargeResponse) {
         return '';
       }
+
       return formatResponse(data, dataBuffer, selectedFormat, filter);
     },
-    [data, dataBuffer, selectedFormat, filter, isLargeResponse, showLargeResponse]
+    [data, dataBuffer, selectedFormat, filter, isLargeResponse, showLargeResponse, useSimplifiedView]
   );
 
   const handleFilterChange = (value) => {
@@ -145,6 +167,8 @@ const QueryResult = ({
   };
 
   const previewMode = useMemo(() => {
+    if (useSimplifiedView && isTextualFormat) return 'preview-text';
+
     // Derive preview mode based on selected format
     if (selectedFormat === 'html') return 'preview-web';
     if (selectedFormat === 'json') return 'preview-json';
@@ -164,21 +188,28 @@ const QueryResult = ({
       return 'preview-text';
     }
     return 'preview-text';
-  }, [selectedFormat, detectedContentType]);
+  }, [selectedFormat, detectedContentType, useSimplifiedView, isTextualFormat]);
 
   const codeMirrorMode = useMemo(() => {
+    if (useSimplifiedView) {
+      return 'text/plain';
+    }
+
     // Find the codeMirrorMode from PREVIEW_FORMAT_OPTIONS (contains all format options)
     return PREVIEW_FORMAT_OPTIONS
       .filter((option) => option.type === 'item' || !option.type)
       .find((option) => option.id === selectedFormat)?.codeMirrorMode || 'text/plain';
-  }, [selectedFormat]);
+  }, [selectedFormat, useSimplifiedView]);
 
-  const queryFilterEnabled = useMemo(() => codeMirrorMode.includes('json') && selectedFormat === 'json' && selectedTab === 'editor', [codeMirrorMode, selectedFormat, selectedTab]);
+  const queryFilterEnabled = useMemo(
+    () => !useSimplifiedView && codeMirrorMode.includes('json') && selectedFormat === 'json' && selectedTab === 'editor',
+    [codeMirrorMode, selectedFormat, selectedTab, useSimplifiedView]
+  );
   const hasScriptError = item.preRequestScriptErrorMessage || item.postResponseScriptErrorMessage;
 
   return (
     <StyledWrapper
-      className="w-full h-full relative flex"
+      className="w-full h-full relative flex min-w-0 max-w-full overflow-hidden"
       queryFilterEnabled={queryFilterEnabled}
     >
       {error ? (
@@ -198,35 +229,89 @@ const QueryResult = ({
         <LargeResponseWarning
           item={item}
           responseSize={responseSize}
+          estimatedLineCount={responsePerformanceProfile.estimatedLineCount}
           onRevealResponse={() => setShowLargeResponse(true)}
         />
       ) : (
-        <div className="h-full flex flex-col">
-          <div className="flex-1 relative">
-            <div className="absolute top-0 left-0 h-full w-full" data-testid="response-preview-container">
-              <QueryResultPreview
-                selectedTab={selectedTab}
-                data={data}
-                dataBuffer={dataBuffer}
-                formattedData={formattedData}
-                item={item}
-                contentType={detectedContentType ?? contentType}
-                previewMode={previewMode}
-                codeMirrorMode={codeMirrorMode}
-                collection={collection}
-                disableRunEventListener={disableRunEventListener}
-                displayedTheme={displayedTheme}
-                docKey={docKey}
-              />
+        <div className="h-full flex flex-col min-h-0 min-w-0 max-w-full overflow-hidden">
+          {shouldUseSimplifiedView && (
+            <div className="px-4 py-2 text-xs muted flex items-center justify-between gap-3 shrink-0">
+              <span>
+                {useSimplifiedView
+                  ? 'Performance mode enabled for this response. You are viewing the raw response in a lightweight viewer to keep the UI responsive.'
+                  : 'Full rendering was re-enabled for this response and may become slow again.'}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                {useSimplifiedView ? (
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => setForceFullRender(true)}
+                    data-testid="response-full-render-btn"
+                  >
+                    Try full render
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => setForceFullRender(false)}
+                    data-testid="response-lightweight-view-btn"
+                  >
+                    Back to lightweight view
+                  </button>
+                )}
+              </div>
             </div>
-            {queryFilterEnabled && (
-              <QueryResultFilter
-                filter={filter}
-                filterExpanded={filterExpanded}
-                onChange={handleFilterChange}
-                onExpandChange={onFilterExpandChange}
-                mode={codeMirrorMode}
-              />
+          )}
+          <div className={`flex-1 min-h-0 min-w-0 max-w-full ${useSimplifiedView ? 'overflow-hidden' : 'relative'}`}>
+            {useSimplifiedView ? (
+              <div className="h-full min-h-0 min-w-0 max-w-full overflow-hidden" data-testid="response-preview-container">
+                <QueryResultPreview
+                  selectedTab={selectedTab}
+                  data={data}
+                  dataBuffer={dataBuffer}
+                  formattedData={formattedData}
+                  item={item}
+                  contentType={detectedContentType ?? contentType}
+                  previewMode={previewMode}
+                  codeMirrorMode={codeMirrorMode}
+                  collection={collection}
+                  disableRunEventListener={disableRunEventListener}
+                  displayedTheme={displayedTheme}
+                  docKey={docKey}
+                  useSimplifiedView={useSimplifiedView}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="absolute top-0 left-0 h-full w-full" data-testid="response-preview-container">
+                  <QueryResultPreview
+                    selectedTab={selectedTab}
+                    data={data}
+                    dataBuffer={dataBuffer}
+                    formattedData={formattedData}
+                    item={item}
+                    contentType={detectedContentType ?? contentType}
+                    previewMode={previewMode}
+                    codeMirrorMode={codeMirrorMode}
+                    collection={collection}
+                    disableRunEventListener={disableRunEventListener}
+                    displayedTheme={displayedTheme}
+                    docKey={docKey}
+                    useSimplifiedView={useSimplifiedView}
+                  />
+                </div>
+                {queryFilterEnabled && (
+                  <QueryResultFilter
+                    filter={filter}
+                    filterExpanded={filterExpanded}
+                    onChange={handleFilterChange}
+                    onExpandChange={onFilterExpandChange}
+                    mode={codeMirrorMode}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>

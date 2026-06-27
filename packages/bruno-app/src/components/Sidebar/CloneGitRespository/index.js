@@ -23,6 +23,7 @@ import GitNotFoundModal from 'components/Git/GitNotFoundModal/index';
 import SkippedPathsWarning from 'components/SkippedPathsWarning';
 import toast from 'react-hot-toast';
 import get from 'lodash/get';
+import useDefaultCollectionLocation from 'hooks/useDefaultCollectionLocation';
 
 const CloneGitRepository = ({ onClose, onFinish, collectionRepositoryUrl = null }) => {
   const [collectionPaths, setCollectionPaths] = useState([]);
@@ -38,9 +39,8 @@ const CloneGitRepository = ({ onClose, onFinish, collectionRepositoryUrl = null 
   const preferences = useSelector((state) => state.app.preferences);
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
   const isDefaultWorkspace = !activeWorkspace || activeWorkspace.type === 'default';
-  const defaultLocation = isDefaultWorkspace
-    ? get(preferences, 'general.defaultLocation', '')
-    : (activeWorkspace?.pathname ? path.join(activeWorkspace.pathname, 'collections') : '');
+  const preferencesDefaultLocation = get(preferences, 'general.defaultLocation', '');
+  const defaultLocation = useDefaultCollectionLocation(activeWorkspace, isDefaultWorkspace, preferencesDefaultLocation);
   const inputRef = useRef();
   const dispatch = useDispatch();
 

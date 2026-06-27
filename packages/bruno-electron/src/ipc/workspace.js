@@ -12,6 +12,8 @@ const { defaultWorkspaceManager } = require('../store/default-workspace');
 const { globalEnvironmentsManager } = require('../store/workspace-environments');
 const { globalEnvironmentsStore } = require('../store/global-environments');
 
+const { resolveWorkspaceCollectionLocation } = require('../utils/workspace-collection-location');
+
 const {
   createWorkspaceConfig,
   readWorkspaceConfig,
@@ -635,9 +637,17 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) =
     }
   });
 
+  ipcMain.handle('renderer:resolve-workspace-collection-location', async (event, workspacePath) => {
+    try {
+      return resolveWorkspaceCollectionLocation(workspacePath);
+    } catch (error) {
+      throw error;
+    }
+  });
+
   ipcMain.handle('renderer:ensure-collections-folder', async (event, workspacePath) => {
     try {
-      const collectionsPath = path.join(workspacePath, 'collections');
+      const collectionsPath = resolveWorkspaceCollectionLocation(workspacePath);
       if (!fs.existsSync(collectionsPath)) {
         await createDirectory(collectionsPath);
       }

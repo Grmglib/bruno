@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useState, forwardRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import path from 'utils/common/path';
 import { browseDirectory, createCollection } from 'providers/ReduxStore/slices/collections/actions';
 import toast from 'react-hot-toast';
 import Portal from 'components/Portal';
@@ -15,6 +14,7 @@ import Dropdown from 'components/Dropdown';
 import { multiLineMsg } from 'utils/common';
 import { formatIpcError } from 'utils/common/error';
 import { DEFAULT_COLLECTION_FORMAT } from 'utils/common/constants';
+import useDefaultCollectionLocation from 'hooks/useDefaultCollectionLocation';
 import StyledWrapper from './StyledWrapper';
 import get from 'lodash/get';
 import Button from 'ui/Button';
@@ -32,8 +32,8 @@ const CreateCollection = ({ onClose, defaultLocation: propDefaultLocation, initi
   const onDropdownCreate = (ref) => (dropdownTippyRef.current = ref);
   const activeWorkspace = workspaces.find((w) => w.uid === workspaceUid);
   const isDefaultWorkspace = activeWorkspace?.type === 'default';
-
-  const defaultLocation = isDefaultWorkspace ? get(preferences, 'general.defaultLocation', '') : (activeWorkspace?.pathname ? path.join(activeWorkspace.pathname, 'collections') : '');
+  const preferencesDefaultLocation = get(preferences, 'general.defaultLocation', '');
+  const defaultLocation = useDefaultCollectionLocation(activeWorkspace, isDefaultWorkspace, preferencesDefaultLocation);
 
   const formik = useFormik({
     enableReinitialize: true,

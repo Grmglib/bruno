@@ -1125,17 +1125,21 @@ export const hasRequestChanges = (item) => {
     return false;
   }
 
-  // Create copies of the item and draft without examples for comparison
-  const originalItem = cloneDeep(item);
-  const draftItem = cloneDeep(item.draft);
+  const projectItemForRequestChangeCheck = (source) => ({
+    uid: source?.uid,
+    type: source?.type,
+    name: source?.name,
+    seq: source?.seq,
+    settings: source?.settings,
+    tags: source?.tags,
+    app: source?.app,
+    request: source?.request
+  });
 
-  // Remove examples from both items for comparison
-  delete originalItem.examples;
-  delete originalItem.draft;
-  delete draftItem.examples;
-  delete draftItem.draft;
-
-  return !isEqual(originalItem, draftItem);
+  return !isEqual(
+    projectItemForRequestChangeCheck(item),
+    projectItemForRequestChangeCheck(item.draft)
+  );
 };
 
 /**

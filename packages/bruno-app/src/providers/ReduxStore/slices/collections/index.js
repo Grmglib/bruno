@@ -54,6 +54,29 @@ const FILE_DERIVED_FOLDER_FIELDS = [
   'root'
 ];
 
+const createDraftFromItem = (item) => {
+  const draft = cloneDeep(item);
+
+  delete draft.response;
+  delete draft.requestSent;
+  delete draft.requestUid;
+  delete draft.requestStartTime;
+  delete draft.cancelTokenUid;
+  delete draft.responseReceived;
+  delete draft.testResults;
+  delete draft.assertionResults;
+  delete draft.preRequestTestResults;
+  delete draft.postResponseTestResults;
+  delete draft.preRequestScriptErrorMessage;
+  delete draft.postResponseScriptErrorMessage;
+  delete draft.testScriptErrorMessage;
+  delete draft.preRequestScriptErrorContext;
+  delete draft.postResponseScriptErrorContext;
+  delete draft.testScriptErrorContext;
+
+  return draft;
+};
+
 const mergeTreeItems = (existingItems, newItems) => {
   if (!Array.isArray(existingItems) || existingItems.length === 0) return newItems;
   const existingByUid = new Map();
@@ -1003,7 +1026,7 @@ export const collectionsSlice = createSlice({
 
         if (item && isItemARequest(item)) {
           if (!item.draft) {
-            item.draft = cloneDeep(item);
+            item.draft = createDraftFromItem(item);
           }
           item.draft.request.url = action.payload.url;
           item.draft.request.params = item?.draft?.request?.params ?? [];
@@ -1782,7 +1805,7 @@ export const collectionsSlice = createSlice({
 
         if (item && isItemARequest(item)) {
           if (!item.draft) {
-            item.draft = cloneDeep(item);
+            item.draft = createDraftFromItem(item);
           }
           item.draft.request.body.mode = action.payload.mode;
         }
@@ -1796,7 +1819,7 @@ export const collectionsSlice = createSlice({
 
         if (item && isItemARequest(item)) {
           if (!item.draft) {
-            item.draft = cloneDeep(item);
+            item.draft = createDraftFromItem(item);
           }
 
           switch (item.draft.request.body.mode) {
@@ -1848,7 +1871,7 @@ export const collectionsSlice = createSlice({
 
         if (item && isItemARequest(item)) {
           if (!item.draft) {
-            item.draft = cloneDeep(item);
+            item.draft = createDraftFromItem(item);
           }
           item.draft.request.body.mode = 'graphql';
           item.draft.request.body.graphql = item.draft.request.body.graphql || {};
@@ -1864,7 +1887,7 @@ export const collectionsSlice = createSlice({
 
         if (item && isItemARequest(item)) {
           if (!item.draft) {
-            item.draft = cloneDeep(item);
+            item.draft = createDraftFromItem(item);
           }
           item.draft.request.body.mode = 'graphql';
           item.draft.request.body.graphql = item.draft.request.body.graphql || {};
@@ -1924,7 +1947,7 @@ export const collectionsSlice = createSlice({
 
         if (item && isItemARequest(item)) {
           if (!item.draft) {
-            item.draft = cloneDeep(item);
+            item.draft = createDraftFromItem(item);
           }
           item.draft.request.method = action.payload.method;
           item.draft.request.methodType = action.payload.methodType;

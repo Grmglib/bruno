@@ -23,6 +23,7 @@ import StyledWrapper from './StyledWrapper';
 import toast from 'react-hot-toast';
 import { showImportIssuesToast } from 'components/Toast/ImportIssuesToast';
 import get from 'lodash/get';
+import useDefaultCollectionLocation from 'hooks/useDefaultCollectionLocation';
 
 const STATUS = {
   LOADING: 'loading',
@@ -155,9 +156,8 @@ export const BulkImportCollectionLocation = ({
   const preferences = useSelector((state) => state.app.preferences);
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
   const isDefaultWorkspace = !activeWorkspace || activeWorkspace.type === 'default';
-  const defaultLocation = isDefaultWorkspace
-    ? get(preferences, 'general.defaultLocation', '')
-    : (activeWorkspace?.pathname ? path.join(activeWorkspace.pathname, 'collections') : '');
+  const preferencesDefaultLocation = get(preferences, 'general.defaultLocation', '');
+  const defaultLocation = useDefaultCollectionLocation(activeWorkspace, isDefaultWorkspace, preferencesDefaultLocation);
 
   const [status, setStatus] = useState({});
   const [errorMessages, setErrorMessages] = useState({});

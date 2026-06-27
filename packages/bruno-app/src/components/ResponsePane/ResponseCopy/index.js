@@ -4,19 +4,19 @@ import toast from 'react-hot-toast';
 import { IconCopy, IconCheck } from '@tabler/icons';
 import classnames from 'classnames';
 import ActionIcon from 'ui/ActionIcon/index';
-import { formatResponse } from 'utils/common';
+import { formatResponse, getRawResponseText } from 'utils/common';
 
 // Helper function to get text to copy
 const getTextToCopy = (selectedTab, selectedFormat, data, dataBuffer) => {
   // If preview is on, copy raw data (what's shown in TextPreview)
   if (selectedTab === 'preview') {
-    return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    return getRawResponseText(data, dataBuffer);
   }
   // If editor is on, copy formatted data based on selected format
   if (selectedFormat && data && dataBuffer) {
     return formatResponse(data, dataBuffer, selectedFormat, null);
   }
-  return typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  return getRawResponseText(data, dataBuffer);
 };
 
 // Hook to get copy response function

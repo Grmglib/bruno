@@ -65,8 +65,11 @@ const StyledWrapper = styled.div`
 
   .response-tab-content {
     flex: 1;
+    overflow-x: hidden;
     overflow-y: auto;
     min-height: 0;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .right-side-container {

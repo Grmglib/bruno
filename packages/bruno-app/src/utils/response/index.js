@@ -58,6 +58,11 @@ export const getDefaultResponseFormat = (contentType) => {
   return { format: 'raw', tab: 'editor' };
 };
 
+export const SIMPLIFIED_RESPONSE_SIZE_THRESHOLD = 2 * 1024 * 1024;
+export const SIMPLIFIED_RESPONSE_LINE_THRESHOLD = 15000;
+export const LARGE_RESPONSE_SIZE_WARNING_THRESHOLD = 10 * 1024 * 1024;
+export const LARGE_RESPONSE_LINE_WARNING_THRESHOLD = 30000;
+
 // Safe HTML escaping for webview content
 export const escapeHtml = (text) => {
   if (typeof text !== 'string') return text;
@@ -161,6 +166,70 @@ const decodeBase64Head = (base64, byteCount) => {
     // On any decoding error, return an empty buffer
     return Buffer.alloc(0);
   }
+};
+
+const countEstimatedLines = (text) => {
+  if (typeof text !== 'string' || !text.length) {
+    return 0;
+  }
+
+  return text.split('\n').length;
+};
+
+export const estimateLineCountFromText = (text, sampleChars = 256 * 1024) => {
+  if (typeof text !== 'string' || !text.length) {
+    return 0;
+  }
+
+  if (text.length <= sampleChars) {
+    return countEstimatedLines(text);
+  }
+
+  const sample = text.slice(0, sampleChars);
+  const sampledLines = countEstimatedLines(sample);
+  return Math.max(sampledLines, Math.round(sampledLines * (text.length / sample.length)));
+};
+
+export const estimateLineCountFromBase64 = (base64, sampleBytes = 256 * 1024) => {
+  const buffer = decodeBase64Head(base64, sampleBytes);
+  if (!buffer.length) {
+    return 0;
+  }
+
+  const sampleText = buffer.toString('utf8');
+  const sampledLines = countEstimatedLines(sampleText);
+  if (!sampledLines) {
+    return 0;
+  }
+
+  const estimatedTotalBytes = Math.floor(base64.length * 0.75);
+  if (estimatedTotalBytes <= buffer.length) {
+    return sampledLines;
+  }
+
+  return Math.max(sampledLines, Math.round(sampledLines * (estimatedTotalBytes / buffer.length)));
+};
+
+export const estimateResponseLineCount = ({ data, dataBuffer }) => {
+  if (typeof data === 'string' && data.length) {
+    return estimateLineCountFromText(data);
+  }
+
+  return estimateLineCountFromBase64(dataBuffer);
+};
+
+export const getResponsePerformanceProfile = ({ data, dataBuffer, responseSize = 0, isTextual = true }) => {
+  const estimatedLineCount = isTextual ? estimateResponseLineCount({ data, dataBuffer }) : 0;
+  const shouldUseSimplifiedView = isTextual
+    && (responseSize >= SIMPLIFIED_RESPONSE_SIZE_THRESHOLD || estimatedLineCount >= SIMPLIFIED_RESPONSE_LINE_THRESHOLD);
+  const shouldWarnBeforeRender = isTextual
+    && (responseSize >= LARGE_RESPONSE_SIZE_WARNING_THRESHOLD || estimatedLineCount >= LARGE_RESPONSE_LINE_WARNING_THRESHOLD);
+
+  return {
+    estimatedLineCount,
+    shouldUseSimplifiedView,
+    shouldWarnBeforeRender
+  };
 };
 
 /**

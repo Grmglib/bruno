@@ -296,7 +296,7 @@ class CodeEditor extends React.Component {
     }
   }
 
-  componentDidUpdate(prevProps) {
+  componentDidUpdate(prevProps, prevState) {
     // Ensure the changes caused by this update are not interpreted as
     // user-input changes which could otherwise result in an infinite
     // event loop.
@@ -393,6 +393,10 @@ class CodeEditor extends React.Component {
       this.editor.setOption('readOnly', this.props.readOnly);
     }
 
+    if (this.editor && this.state.searchBarVisible !== prevState.searchBarVisible) {
+      this.editor.refresh();
+    }
+
     this.ignoreChangeEvent = false;
   }
 
@@ -437,9 +441,6 @@ class CodeEditor extends React.Component {
   }
 
   render() {
-    if (this.editor) {
-      this.editor.refresh();
-    }
     return (
       <StyledWrapper
         className={`h-full w-full flex flex-col relative graphiql-container ${this.props.readOnly ? 'read-only' : ''}`}

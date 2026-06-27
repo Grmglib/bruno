@@ -1,5 +1,5 @@
 const { describe, it, expect } = require('@jest/globals');
-import { mergeHeaders, transformRequestToSaveToFilesystem, getCollectionItemCounts } from './index';
+import { mergeHeaders, transformRequestToSaveToFilesystem, getCollectionItemCounts, hasRequestChanges } from './index';
 
 describe('mergeHeaders', () => {
   it('should include headers from collection, folder and request (with correct precedence)', () => {
@@ -130,5 +130,48 @@ describe('getCollectionItemCounts', () => {
   it('returns zero counts for empty or missing items', () => {
     expect(getCollectionItemCounts([])).toEqual({ folderCount: 0, requestCount: 0 });
     expect(getCollectionItemCounts(undefined)).toEqual({ folderCount: 0, requestCount: 0 });
+  });
+});
+
+describe('hasRequestChanges', () => {
+  it('ignores response payload differences when the request content is unchanged', () => {
+    const request = {
+      method: 'POST',
+      url: 'https://example.com',
+      params: [],
+      headers: [],
+      auth: { mode: 'none' },
+      body: { mode: 'json', json: '{"ok":true}' },
+      script: { req: '', res: '' },
+      vars: { req: [], res: [] },
+      assertions: [],
+      tests: '',
+      docs: ''
+    };
+
+    const item = {
+      uid: 'requestuid123456789012',
+      type: 'http-request',
+      name: 'Request',
+      seq: 1,
+      settings: {},
+      tags: [],
+      app: null,
+      request,
+      response: { data: 'x'.repeat(200000), dataBuffer: 'large-response' },
+      draft: {
+        uid: 'requestuid123456789012',
+        type: 'http-request',
+        name: 'Request',
+        seq: 1,
+        settings: {},
+        tags: [],
+        app: null,
+        request: { ...request },
+        response: { data: 'y'.repeat(200000), dataBuffer: 'another-large-response' }
+      }
+    };
+
+    expect(hasRequestChanges(item)).toBe(false);
   });
 });

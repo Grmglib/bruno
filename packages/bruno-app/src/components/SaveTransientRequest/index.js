@@ -23,6 +23,7 @@ import { DEFAULT_COLLECTION_FORMAT } from 'utils/common/constants';
 import { itemSchema } from '@usebruno/schema';
 import { uuid } from 'utils/common';
 import { formatIpcError } from 'utils/common/error';
+import useDefaultCollectionLocation from 'hooks/useDefaultCollectionLocation';
 import get from 'lodash/get';
 
 const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOpen = false, onClose }) => {
@@ -42,9 +43,12 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
   const isScratchCollection = activeWorkspace?.scratchCollectionUid === collection?.uid;
   const preferences = useSelector((state) => state.app.preferences);
   const isDefaultWorkspace = activeWorkspace?.type === 'default';
-  const defaultCollectionLocation = isDefaultWorkspace
-    ? get(preferences, 'general.defaultLocation', '')
-    : (activeWorkspace?.pathname ? path.join(activeWorkspace.pathname, 'collections') : '');
+  const preferencesDefaultLocation = get(preferences, 'general.defaultLocation', '');
+  const defaultCollectionLocation = useDefaultCollectionLocation(
+    activeWorkspace,
+    isDefaultWorkspace,
+    preferencesDefaultLocation
+  );
 
   const availableCollections = useMemo(() => {
     if (!isScratchCollection || !activeWorkspace) return [];

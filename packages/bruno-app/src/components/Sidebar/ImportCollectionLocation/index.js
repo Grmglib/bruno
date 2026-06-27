@@ -22,6 +22,7 @@ import Dropdown from 'components/Dropdown';
 import StyledWrapper from './StyledWrapper';
 import { showImportIssuesToast } from 'components/Toast/ImportIssuesToast';
 import { DEFAULT_COLLECTION_FORMAT } from 'utils/common/constants';
+import useDefaultCollectionLocation from 'hooks/useDefaultCollectionLocation';
 
 // Extract collection name from raw data
 const getCollectionName = (format, rawData) => {
@@ -139,10 +140,8 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
   const preferences = useSelector((state) => state.app.preferences);
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
   const isDefaultWorkspace = !activeWorkspace || activeWorkspace.type === 'default';
-
-  const defaultLocation = isDefaultWorkspace
-    ? get(preferences, 'general.defaultLocation', '')
-    : (activeWorkspace?.pathname ? path.join(activeWorkspace.pathname, 'collections') : '');
+  const preferencesDefaultLocation = get(preferences, 'general.defaultLocation', '');
+  const defaultLocation = useDefaultCollectionLocation(activeWorkspace, isDefaultWorkspace, preferencesDefaultLocation);
 
   const collectionName = getCollectionName(format, rawData);
   const apidogModuleNames = isApidog ? getApidogModuleNames(rawData) : [];

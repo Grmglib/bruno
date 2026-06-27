@@ -76,6 +76,15 @@ describe('formatResponse', () => {
       expect(result).toBe('{"test":"value","description":"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua","content":"Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat"}');
       expect(typeof result).toBe('string');
     });
+
+    it('should preserve the original multiline JSON text for large responses', () => {
+      const data = '{\n  "users": [\n    {\n      "name": "Jane"\n    }\n  ]\n}';
+      const buffer = createBase64Buffer(data);
+      const result = formatResponse(data, buffer, 'application/json', undefined, 16);
+
+      expect(result).toBe(data);
+      expect(typeof result).toBe('string');
+    });
   });
 
   describe('XML mode', () => {

@@ -6,7 +6,7 @@ import StyledWrapper from './StyledWrapper';
 import { formatSize } from 'utils/common/index';
 import Button from 'ui/Button/index';
 
-const LargeResponseWarning = ({ item, responseSize, onRevealResponse }) => {
+const LargeResponseWarning = ({ item, responseSize, estimatedLineCount, onRevealResponse }) => {
   const { ipcRenderer } = window;
   const response = item.response || {};
 
@@ -57,6 +57,14 @@ const LargeResponseWarning = ({ item, responseSize, onRevealResponse }) => {
             Handling responses over <span className="size-highlight supported-size">{formatSize(10 * 1024 * 1024)}</span> could degrade performance.
             <br />
             Size of current response: <span className="size-highlight current-size">{formatSize(responseSize)}</span>
+            {estimatedLineCount ? (
+              <>
+                <br />
+                Estimated lines: <span className="size-highlight current-size">{estimatedLineCount.toLocaleString()}</span>
+              </>
+            ) : null}
+            <br />
+            Opening this response will use a simplified viewer to keep Bruno responsive.
           </div>
         </div>
       </div>
@@ -65,11 +73,11 @@ const LargeResponseWarning = ({ item, responseSize, onRevealResponse }) => {
           icon={<IconEye size={18} strokeWidth={1.5} />}
           iconPosition="left"
           onClick={onRevealResponse}
-          title="Show response content"
+          title="Show raw response content"
           color="secondary"
           size="sm"
         >
-          View
+          View raw
         </Button>
         <Button
           icon={<IconDownload size={18} strokeWidth={1.5} />}

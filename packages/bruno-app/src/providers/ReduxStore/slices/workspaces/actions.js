@@ -22,6 +22,7 @@ import {
 import { openConsole, closeConsole, setActiveTab as setActiveDevToolsTab, TAB_IDENFIERS as DEVTOOL_TABS } from '../logs';
 import { normalizePath } from 'utils/common/path';
 import { findCollectionByPathname } from 'utils/collections';
+import { resolveWorkspaceCollectionLocation } from 'utils/workspaces/collectionLocation';
 import { waitForNextTick } from 'utils/common';
 import { hydrateTabs, getActiveTabFromSnapshot, hydrateSnapshotLookups } from 'utils/snapshot';
 import { reorderCollectionGroups } from 'utils/workspaces/collectionGroups';
@@ -935,7 +936,7 @@ export const createCollectionInWorkspace = (collectionName, collectionFolderName
       throw new Error('Workspace not found');
     }
 
-    const projectCollectionLocation = path.join(currentWorkspace.pathname, 'collections');
+    const projectCollectionLocation = resolveWorkspaceCollectionLocation(currentWorkspace);
 
     return await dispatch(createCollection(collectionName, collectionFolderName, projectCollectionLocation, {
       workspaceId: currentWorkspace.pathname
@@ -1009,7 +1010,7 @@ export const importCollectionInWorkspace = (collection, workspaceUid, collection
       throw new Error('Workspace not found');
     }
 
-    const location = collectionLocation || path.join(currentWorkspace.pathname, 'collections');
+    const location = collectionLocation || resolveWorkspaceCollectionLocation(currentWorkspace);
     const transformedCollection = await transformCollection(collection, type);
     const collectionPath = await ipcRenderer.invoke('renderer:import-collection', transformedCollection, location);
 

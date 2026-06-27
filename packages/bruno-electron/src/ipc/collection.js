@@ -88,6 +88,7 @@ const {
   removeCollectionFromWorkspace,
   getWorkspacesWithCollection
 } = require('../utils/workspace-config');
+const { resolveWorkspaceCollectionLocation } = require('../utils/workspace-collection-location');
 const LastOpenedWorkspaces = require('../store/last-opened-workspaces');
 
 const environmentSecretsStore = new EnvironmentSecretsStore();
@@ -222,6 +223,10 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
           throw new Error(`collection: invalid pathname - ${dirPath}`);
         }
 
+        if (collectionLocation && !fs.existsSync(collectionLocation)) {
+          fs.mkdirSync(collectionLocation, { recursive: true });
+        }
+
         if (!fs.existsSync(dirPath)) {
           await createDirectory(dirPath);
         }
@@ -353,8 +358,8 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         throw new Error(`Collection: ${collectionPath} does not exist`);
       }
 
-      // resolve a collision-free target folder inside `<workspace>/collections`
-      const collectionsDir = path.join(workspacePath, 'collections');
+      // resolve a collision-free target folder inside the workspace
+      const collectionsDir = resolveWorkspaceCollectionLocation(workspacePath);
       if (!fs.existsSync(collectionsDir)) {
         await createDirectory(collectionsDir);
       }

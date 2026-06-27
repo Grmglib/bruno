@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 import get from 'lodash/get';
 import CodeEditor from 'components/CodeEditor';
 import FormUrlEncodedParams from 'components/RequestPane/FormUrlEncodedParams';
@@ -19,6 +19,14 @@ const RequestBody = ({ item, collection }) => {
   const { displayedTheme } = useTheme();
   const preferences = useSelector((state) => state.app.preferences);
   const [bodyScroll, setBodyScroll] = usePersistedState({ key: `request-body-${bodyMode}-scroll-${item.uid}`, default: 0 });
+  const editorContextItem = useMemo(() => ({
+    uid: item.uid,
+    type: item.type,
+    pathname: item.pathname,
+    request: item.request,
+    draft: item.draft ? { request: item.draft.request } : null,
+    root: item.root
+  }), [item.uid, item.type, item.pathname, item.request, item.draft?.request, item.root]);
 
   const onEdit = (value) => {
     dispatch(
@@ -53,7 +61,7 @@ const RequestBody = ({ item, collection }) => {
         <CodeEditor
           ref={editorRef}
           collection={collection}
-          item={item}
+          item={editorContextItem}
           theme={displayedTheme}
           font={get(preferences, 'font.codeFont', 'default')}
           fontSize={get(preferences, 'font.codeFontSize')}
