@@ -130,6 +130,12 @@ const Collection = ({ collection, searchText }) => {
   };
 
   const hasSearchText = searchText && searchText?.trim()?.length;
+  const collectionNameMatchesSearch = hasSearchText
+    ? collection?.name?.toLowerCase().includes(searchText.trim().toLowerCase())
+    : false;
+  // When the collection name itself matches the search, treat the whole collection as a
+  // result and show all of its items (don't filter the children).
+  const childSearchText = collectionNameMatchesSearch ? '' : searchText;
   const collectionIsCollapsed = hasSearchText ? false : collection.collapsed;
 
   const iconClassName = classnames({
@@ -327,8 +333,8 @@ const Collection = ({ collection, searchText }) => {
     return () => clearTimeout(timer);
   }, [itemCount, isLoading, collection.mountStatus]);
 
-  if (searchText && searchText.length) {
-    if (!doesCollectionHaveItemsMatchingSearchText(collection, searchText)) {
+  if (hasSearchText) {
+    if (!collectionNameMatchesSearch && !doesCollectionHaveItemsMatchingSearchText(collection, searchText)) {
       return null;
     }
   }
@@ -556,7 +562,7 @@ const Collection = ({ collection, searchText }) => {
             strokeWidth={1.5}
             className="mx-1 flex-shrink-0"
           />
-          <div className="w-full" id="sidebar-collection-name" title={collection.name}>
+          <div className="w-full ml-1" id="sidebar-collection-name" title={collection.name}>
             {collection.name}
           </div>
           {isLoading ? <IconLoader2 className="animate-spin mx-1" size={18} strokeWidth={1.5} /> : null}
@@ -582,10 +588,10 @@ const Collection = ({ collection, searchText }) => {
         {!collectionIsCollapsed ? (
           <div>
             {folderItems?.map?.((i) => {
-              return <CollectionItem key={i.uid} item={i} collectionUid={collection.uid} collectionPathname={collection.pathname} searchText={searchText} />;
+              return <CollectionItem key={i.uid} item={i} collectionUid={collection.uid} collectionPathname={collection.pathname} searchText={childSearchText} />;
             })}
             {requestItems?.map?.((i) => {
-              return <CollectionItem key={i.uid} item={i} collectionUid={collection.uid} collectionPathname={collection.pathname} searchText={searchText} />;
+              return <CollectionItem key={i.uid} item={i} collectionUid={collection.uid} collectionPathname={collection.pathname} searchText={childSearchText} />;
             })}
             {showEmptyCollectionMessage ? (
               <div className="empty-collection-message">

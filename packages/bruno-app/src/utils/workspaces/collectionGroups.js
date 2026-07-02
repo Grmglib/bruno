@@ -1,4 +1,5 @@
 import { normalizePath } from 'utils/common/path';
+import { doesCollectionHaveItemsMatchingSearchText } from 'utils/collections/search';
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
@@ -118,6 +119,18 @@ export const reorderCollectionGroups = (collectionGroups = [], draggedGroupUid, 
   return reordered;
 };
 
+const doesEntryMatchSearch = (entry, query) => {
+  if (getSidebarEntryName(entry).toLowerCase().includes(query)) {
+    return true;
+  }
+
+  if (entry.kind === 'loaded' && entry.collection) {
+    return Boolean(doesCollectionHaveItemsMatchingSearchText(entry.collection, query));
+  }
+
+  return false;
+};
+
 export const filterSidebarTree = (tree, searchText) => {
   const query = (searchText || '').trim().toLowerCase();
   if (!query) {
@@ -127,18 +140,14 @@ export const filterSidebarTree = (tree, searchText) => {
   return tree
     .map((node) => {
       if (node.type === 'group') {
-        const filteredEntries = node.entries.filter((entry) =>
-          getSidebarEntryName(entry).toLowerCase().includes(query)
-        );
+        const filteredEntries = node.entries.filter((entry) => doesEntryMatchSearch(entry, query));
         if (filteredEntries.length === 0) {
           return null;
         }
         return { ...node, entries: filteredEntries, forceExpanded: true };
       }
 
-      const filteredEntries = node.entries.filter((entry) =>
-        getSidebarEntryName(entry).toLowerCase().includes(query)
-      );
+      const filteredEntries = node.entries.filter((entry) => doesEntryMatchSearch(entry, query));
       if (filteredEntries.length === 0) {
         return null;
       }

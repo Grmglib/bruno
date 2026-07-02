@@ -11,6 +11,15 @@ jest.mock('utils/icons', () => ({
   readCustomIcon: jest.fn()
 }));
 
+jest.mock('react-redux', () => ({
+  useSelector: jest.fn((selector) => selector({
+    workspaces: {
+      workspaces: [{ uid: 'ws-1', pathname: '/workspace/repo' }],
+      activeWorkspaceUid: 'ws-1'
+    }
+  }))
+}));
+
 const { readCustomIcon } = require('utils/icons');
 
 describe('CollectionIcon', () => {
@@ -37,7 +46,7 @@ describe('CollectionIcon', () => {
 
     render(<CollectionIcon icon={{ source: 'custom', pack: 'brand', name: 'logo' }} />);
     expect(await screen.findByTestId('custom-svg')).toBeInTheDocument();
-    expect(readCustomIcon).toHaveBeenCalledWith('brand', 'logo', 'svg');
+    expect(readCustomIcon).toHaveBeenCalledWith('brand', 'logo', 'svg', '/workspace/repo');
   });
 
   it('renders a custom raster icon from a pack', async () => {
@@ -57,6 +66,6 @@ describe('CollectionIcon', () => {
       expect(image.getAttribute('src')).toBe('data:image/png;base64,abc');
     });
 
-    expect(readCustomIcon).toHaveBeenCalledWith('brand', 'logo', 'png');
+    expect(readCustomIcon).toHaveBeenCalledWith('brand', 'logo', 'png', '/workspace/repo');
   });
 });

@@ -16,8 +16,26 @@ const getIconsDirectory = () => {
   return path.join(app.getPath('userData'), ICONS_DIR_NAME);
 };
 
+const getWorkspaceIconsDirectory = (workspacePath) => {
+  if (!workspacePath || typeof workspacePath !== 'string') {
+    return null;
+  }
+
+  return path.join(workspacePath, ICONS_DIR_NAME);
+};
+
 const ensureIconsDirectory = () => {
   const iconsDir = getIconsDirectory();
+  fs.mkdirSync(iconsDir, { recursive: true });
+  return iconsDir;
+};
+
+const ensureWorkspaceIconsDirectory = (workspacePath) => {
+  const iconsDir = getWorkspaceIconsDirectory(workspacePath);
+  if (!iconsDir) {
+    return null;
+  }
+
   fs.mkdirSync(iconsDir, { recursive: true });
   return iconsDir;
 };
@@ -74,10 +92,8 @@ const listIconFiles = (directoryPath) => {
     });
 };
 
-const listIconPacks = () => {
-  const iconsDir = ensureIconsDirectory();
-
-  if (!fs.existsSync(iconsDir)) {
+const listPacksFromDirectory = (iconsDir, scope) => {
+  if (!iconsDir || !fs.existsSync(iconsDir)) {
     return [];
   }
 
@@ -86,10 +102,36 @@ const listIconPacks = () => {
     .map((entry) => ({
       id: entry.name,
       name: entry.name,
+      scope,
       icons: listIconFiles(path.join(iconsDir, entry.name))
     }))
-    .filter((pack) => pack.icons.length > 0)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .filter((pack) => pack.icons.length > 0);
+};
+
+const mergeIconPacks = (workspacePacks, userPacks) => {
+  const merged = new Map();
+
+  for (const pack of workspacePacks) {
+    merged.set(pack.id, pack);
+  }
+
+  for (const pack of userPacks) {
+    if (!merged.has(pack.id)) {
+      merged.set(pack.id, pack);
+    }
+  }
+
+  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
+};
+
+const listIconPacks = (workspacePath) => {
+  const workspaceIconsDir = getWorkspaceIconsDirectory(workspacePath);
+  const workspacePacks = listPacksFromDirectory(workspaceIconsDir, 'workspace');
+
+  const userIconsDir = ensureIconsDirectory();
+  const userPacks = listPacksFromDirectory(userIconsDir, 'user');
+
+  return mergeIconPacks(workspacePacks, userPacks);
 };
 
 const resolveIconPath = (packDir, iconName, format) => {
@@ -100,31 +142,62 @@ const resolveIconPath = (packDir, iconName, format) => {
     return { iconPath, format: normalizedFormat };
   }
 
-  if (!format) {
-    for (const extension of SUPPORTED_ICON_EXTENSIONS) {
-      const fallbackPath = path.join(packDir, `${iconName}.${extension}`);
-      if (fs.existsSync(fallbackPath) && fs.statSync(fallbackPath).isFile()) {
-        return { iconPath: fallbackPath, format: extension };
-      }
+  // The stored format may not match the file actually on disk (e.g. the config
+  // defaulted to svg but the icon is a png). Always fall back to any supported
+  // extension so the icon still resolves instead of disappearing.
+  for (const extension of SUPPORTED_ICON_EXTENSIONS) {
+    if (extension === normalizedFormat) {
+      continue;
+    }
+
+    const fallbackPath = path.join(packDir, `${iconName}.${extension}`);
+    if (fs.existsSync(fallbackPath) && fs.statSync(fallbackPath).isFile()) {
+      return { iconPath: fallbackPath, format: extension };
     }
   }
 
   return null;
 };
 
-const readCustomIcon = (packId, iconName, format) => {
+const getCandidateIconsDirectories = (workspacePath) => {
+  const directories = [];
+
+  const workspaceIconsDir = getWorkspaceIconsDirectory(workspacePath);
+  if (workspaceIconsDir) {
+    directories.push(workspaceIconsDir);
+  }
+
+  directories.push(ensureIconsDirectory());
+
+  return directories;
+};
+
+const resolveCustomIcon = (packId, iconName, format, workspacePath) => {
+  // Search the icon file across every candidate location (workspace first, then
+  // the user icons folder). We look for the actual file rather than locking onto
+  // the first pack folder that exists, so an icon present in one location is not
+  // masked by an empty/partial pack folder in another.
+  for (const iconsDir of getCandidateIconsDirectories(workspacePath)) {
+    const packDir = path.join(iconsDir, packId);
+    if (!fs.existsSync(packDir) || !fs.statSync(packDir).isDirectory()) {
+      continue;
+    }
+
+    const resolved = resolveIconPath(packDir, iconName, format);
+    if (resolved) {
+      return resolved;
+    }
+  }
+
+  return null;
+};
+
+const readCustomIcon = (packId, iconName, format, workspacePath) => {
   if (!packId || !iconName) {
     throw new Error('Pack id and icon name are required');
   }
 
-  const iconsDir = ensureIconsDirectory();
-  const packDir = path.join(iconsDir, packId);
-
-  if (!fs.existsSync(packDir) || !fs.statSync(packDir).isDirectory()) {
-    throw new Error(`Icon pack not found: ${packId}`);
-  }
-
-  const resolved = resolveIconPath(packDir, iconName, format);
+  const resolved = resolveCustomIcon(packId, iconName, format, workspacePath);
   if (!resolved) {
     throw new Error(`Icon not found: ${packId}/${iconName}`);
   }
@@ -150,18 +223,35 @@ const readCustomIcon = (packId, iconName, format) => {
   };
 };
 
-const openIconsFolder = async () => {
+const openIconsFolder = async (workspacePath) => {
+  if (workspacePath) {
+    const iconsDir = ensureWorkspaceIconsDirectory(workspacePath);
+    await shell.openPath(iconsDir);
+    return iconsDir;
+  }
+
   const iconsDir = ensureIconsDirectory();
   await shell.openPath(iconsDir);
   return iconsDir;
 };
 
+const getIconsFolderPath = (workspacePath) => {
+  if (workspacePath) {
+    return ensureWorkspaceIconsDirectory(workspacePath);
+  }
+
+  return getIconsDirectory();
+};
+
 module.exports = {
   getIconsDirectory,
+  getWorkspaceIconsDirectory,
   ensureIconsDirectory,
+  ensureWorkspaceIconsDirectory,
   sanitizeSvg,
   listIconPacks,
   readCustomIcon,
   openIconsFolder,
+  getIconsFolderPath,
   SUPPORTED_ICON_EXTENSIONS
 };

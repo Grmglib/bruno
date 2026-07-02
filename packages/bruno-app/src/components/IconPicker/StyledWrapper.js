@@ -9,6 +9,9 @@ const StyledWrapper = styled.div`
   }
 
   .icon-picker-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
     border: 1px solid ${(props) => props.theme.dropdown.border};
     border-radius: 0.375rem;
     padding: 0.25rem 0.625rem;
@@ -20,6 +23,27 @@ const StyledWrapper = styled.div`
     &.active {
       border-color: ${(props) => props.theme.sidebar.collection.item.focusBorder};
       background: ${(props) => props.theme.sidebar.collection.item.hoverBg};
+    }
+  }
+
+  .icon-picker-tab-label {
+    line-height: 1;
+  }
+
+  .icon-picker-pack-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 0.25rem;
+    padding: 0.0625rem 0.25rem;
+    font-size: 0.625rem;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: ${(props) => props.theme.sidebar.collection.item.focusBorder};
+    background: ${(props) => props.theme.sidebar.collection.item.hoverBg};
+
+    &.local {
+      color: ${(props) => props.theme.sidebar.muted};
     }
   }
 

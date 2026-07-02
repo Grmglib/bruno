@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
 import dynamicIconImports from 'lucide-react/dynamicIconImports';
 import DOMPurify from 'dompurify';
 import { readCustomIcon } from 'utils/icons';
@@ -28,13 +29,13 @@ const LucideIcon = ({ name, size, className, strokeWidth }) => {
   );
 };
 
-const CustomPackIcon = ({ pack, name, format = DEFAULT_CUSTOM_ICON_FORMAT, size, className }) => {
+const CustomPackIcon = ({ pack, name, format = DEFAULT_CUSTOM_ICON_FORMAT, size, className, workspacePath }) => {
   const [iconPayload, setIconPayload] = useState(null);
 
   useEffect(() => {
     let active = true;
 
-    readCustomIcon(pack, name, format)
+    readCustomIcon(pack, name, format, workspacePath)
       .then((payload) => {
         if (active) {
           setIconPayload(payload);
@@ -49,7 +50,7 @@ const CustomPackIcon = ({ pack, name, format = DEFAULT_CUSTOM_ICON_FORMAT, size,
     return () => {
       active = false;
     };
-  }, [pack, name, format]);
+  }, [pack, name, format, workspacePath]);
 
   if (!iconPayload) {
     return (
@@ -91,6 +92,12 @@ const CustomPackIcon = ({ pack, name, format = DEFAULT_CUSTOM_ICON_FORMAT, size,
 };
 
 const CollectionIcon = ({ icon, size = 14, className, strokeWidth = 1.5 }) => {
+  const workspacePath = useSelector((state) => {
+    const { workspaces, activeWorkspaceUid } = state.workspaces;
+    const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
+    return activeWorkspace?.pathname || null;
+  });
+
   if (icon?.source === 'custom' && icon?.pack && icon?.name) {
     return (
       <StyledWrapper $size={size}>
@@ -100,6 +107,7 @@ const CollectionIcon = ({ icon, size = 14, className, strokeWidth = 1.5 }) => {
           format={icon.format || DEFAULT_CUSTOM_ICON_FORMAT}
           size={size}
           className={className}
+          workspacePath={workspacePath}
         />
       </StyledWrapper>
     );

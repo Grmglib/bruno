@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
 import dynamicIconImports from 'lucide-react/dynamicIconImports';
 import { Virtuoso } from 'react-virtuoso';
 import { IconFolder } from '@tabler/icons';
@@ -44,15 +45,20 @@ const IconPicker = ({ isOpen, onClose, value, onChange }) => {
   const [activeTab, setActiveTab] = useState(LUCIDE_TAB);
   const [search, setSearch] = useState('');
   const [customPacks, setCustomPacks] = useState([]);
+  const workspacePath = useSelector((state) => {
+    const { workspaces, activeWorkspaceUid } = state.workspaces;
+    const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
+    return activeWorkspace?.pathname || null;
+  });
 
   const loadCustomPacks = useCallback(async () => {
     try {
-      const packs = await listIconPacks();
+      const packs = await listIconPacks(workspacePath);
       setCustomPacks(packs || []);
     } catch (error) {
       setCustomPacks([]);
     }
-  }, []);
+  }, [workspacePath]);
 
   useEffect(() => {
     if (isOpen) {
@@ -127,6 +133,11 @@ const IconPicker = ({ isOpen, onClose, value, onChange }) => {
   };
 
   const handleOpenIconsFolder = async () => {
+    await openIconsFolder(workspacePath);
+    await loadCustomPacks();
+  };
+
+  const handleOpenUserIconsFolder = async () => {
     await openIconsFolder();
     await loadCustomPacks();
   };
@@ -199,7 +210,13 @@ const IconPicker = ({ isOpen, onClose, value, onChange }) => {
               onClick={() => setActiveTab(pack.id)}
               data-testid={`icon-picker-tab-${pack.id}`}
             >
-              {pack.name}
+              <span className="icon-picker-tab-label">{pack.name}</span>
+              {pack.scope === 'workspace' ? (
+                <span className="icon-picker-pack-badge" title="Synced with workspace repository">repo</span>
+              ) : null}
+              {pack.scope === 'user' ? (
+                <span className="icon-picker-pack-badge local" title="Local to this machine">local</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -231,7 +248,7 @@ const IconPicker = ({ isOpen, onClose, value, onChange }) => {
 
         <div className="icon-picker-footer">
           <div className="icon-picker-help">
-            Custom icon packs live in your Bruno icons folder. Each subfolder is a pack of `.svg`, `.png`, `.jpg` or `.jpeg` files.
+            Workspace icon packs live in <code>icons/</code> at the workspace root and sync via git. Local packs live in your Bruno user icons folder.
           </div>
           <div className="flex gap-2">
             <Button
@@ -242,7 +259,16 @@ const IconPicker = ({ isOpen, onClose, value, onChange }) => {
               icon={<IconFolder size={16} strokeWidth={1.5} />}
               data-testid="icon-picker-open-folder"
             >
-              Open Icons Folder
+              Open Workspace Icons
+            </Button>
+            <Button
+              type="button"
+              color="secondary"
+              variant="ghost"
+              onClick={handleOpenUserIconsFolder}
+              data-testid="icon-picker-open-user-folder"
+            >
+              Open Local Icons
             </Button>
             <Button
               type="button"

@@ -3,40 +3,40 @@ const {
   listIconPacks,
   readCustomIcon,
   openIconsFolder,
-  getIconsDirectory,
+  getIconsFolderPath,
   ensureIconsDirectory
 } = require('../services/icons');
 
 const registerIconsIpc = () => {
   ensureIconsDirectory();
 
-  ipcMain.handle('renderer:list-icon-packs', async () => {
+  ipcMain.handle('renderer:list-icon-packs', async (_, { workspacePath } = {}) => {
     try {
-      return listIconPacks();
+      return listIconPacks(workspacePath);
     } catch (error) {
       return Promise.reject(error);
     }
   });
 
-  ipcMain.handle('renderer:read-custom-icon', async (_, { pack, name, format }) => {
+  ipcMain.handle('renderer:read-custom-icon', async (_, { pack, name, format, workspacePath }) => {
     try {
-      return readCustomIcon(pack, name, format);
+      return readCustomIcon(pack, name, format, workspacePath);
     } catch (error) {
       return Promise.reject(error);
     }
   });
 
-  ipcMain.handle('renderer:open-icons-folder', async () => {
+  ipcMain.handle('renderer:open-icons-folder', async (_, { workspacePath } = {}) => {
     try {
-      return await openIconsFolder();
+      return await openIconsFolder(workspacePath);
     } catch (error) {
       return Promise.reject(error);
     }
   });
 
-  ipcMain.handle('renderer:get-icons-folder-path', async () => {
+  ipcMain.handle('renderer:get-icons-folder-path', async (_, { workspacePath } = {}) => {
     try {
-      return getIconsDirectory();
+      return getIconsFolderPath(workspacePath);
     } catch (error) {
       return Promise.reject(error);
     }
