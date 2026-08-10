@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import get from 'lodash/get';
 import find from 'lodash/find';
 import { useDispatch, useSelector } from 'react-redux';
@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from 'components/Tabs';
 import StatusDot from 'components/StatusDot';
 import { usePersistedState } from 'hooks/usePersistedState';
 import { useFocusErrorLine } from 'hooks/useFocusErrorLine';
+import { getActiveScriptTab } from 'utils/tabs';
 
 const Script = ({ item, collection }) => {
   const dispatch = useDispatch();
@@ -27,13 +28,7 @@ const Script = ({ item, collection }) => {
   const focusedTab = find(tabs, (t) => t.uid === activeTabUid);
   const scriptPaneTab = focusedTab?.scriptPaneTab;
 
-  // Default to post-response if pre-request script is empty (only when scriptPaneTab is null/undefined)
-  const getDefaultTab = () => {
-    const hasPreRequestScript = requestScript && requestScript.trim().length > 0;
-    return hasPreRequestScript ? 'pre-request' : 'post-response';
-  };
-
-  const activeTab = scriptPaneTab || getDefaultTab();
+  const activeTab = getActiveScriptTab(scriptPaneTab, requestScript);
 
   const { displayedTheme } = useTheme();
   const preferences = useSelector((state) => state.app.preferences);
@@ -95,8 +90,6 @@ const Script = ({ item, collection }) => {
 
   const onRun = () => dispatch(sendRequest(item, collection.uid));
   const onSave = () => dispatch(saveRequest(item.uid, collection.uid));
-
-  const requestContext = useMemo(() => buildRequestContextFromItem(item), [item]);
 
   const hasPreRequestScript = requestScript && requestScript.trim().length > 0;
   const hasPostResponseScript = responseScript && responseScript.trim().length > 0;

@@ -26,7 +26,7 @@ import { formatIpcError } from 'utils/common/error';
 import useDefaultCollectionLocation from 'hooks/useDefaultCollectionLocation';
 import get from 'lodash/get';
 
-const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOpen = false, onClose }) => {
+const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOpen = false, onClose, closeAfterSave = false }) => {
   const dispatch = useDispatch();
 
   const latestCollection = useSelector((state) =>
@@ -205,9 +205,30 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
 
       const sanitizedFilename = sanitizeName(trimmedName);
 
-      const itemToSave = latestItem.draft ? { ...latestItem, ...latestItem.draft } : { ...latestItem };
+      const hasFileModeEdit = latestItem.draft?.raw != null && latestItem.draft.raw !== latestItem.raw;
+      let baseItem;
+      if (hasFileModeEdit) {
+        const rawSourceFormat = collection.format || DEFAULT_COLLECTION_FORMAT;
+        try {
+          const parsed = await ipcRenderer.invoke(
+            'renderer:convert-to-json',
+            latestItem,
+            latestItem.draft.raw,
+            rawSourceFormat
+          );
+          baseItem = { ...latestItem, ...parsed, uid: latestItem.uid, pathname: latestItem.pathname };
+        } catch (err) {
+          toast.error(formatIpcError(err) || 'Invalid request content - fix it in file mode before saving');
+          return;
+        }
+      } else {
+        baseItem = latestItem.draft ? { ...latestItem, ...latestItem.draft } : { ...latestItem };
+      }
+
+      const itemToSave = { ...baseItem };
       itemToSave.name = sanitizedFilename;
       delete itemToSave.draft;
+      delete itemToSave.raw;
 
       const transformedItem = transformRequestToSaveToFilesystem(itemToSave);
       await itemSchema.validate(transformedItem);
@@ -226,15 +247,17 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
         sourceFormat
       });
 
-      dispatch(
-        insertTaskIntoQueue({
-          uid: uuid(),
-          type: 'OPEN_REQUEST',
-          collectionUid: targetCollection.uid,
-          itemPathname: targetPathname,
-          preview: false
-        })
-      );
+      if (!closeAfterSave) {
+        dispatch(
+          insertTaskIntoQueue({
+            uid: uuid(),
+            type: 'OPEN_REQUEST',
+            collectionUid: targetCollection.uid,
+            itemPathname: targetPathname,
+            preview: false
+          })
+        );
+      }
 
       dispatch(closeTabs({ tabUids: [item.uid] }));
 
@@ -340,7 +363,7 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
       return;
     }
     try {
-      await dispatch(createCollection(trimmedName, sanitizeName(trimmedName), newCollection.location, { format: newCollection.format }));
+      await dispatch(createCollection(trimmedName, sanitizeName(trimmedName), newCollection.location, { format: newCollection.format, source: 'save-transient-request', entryPoint: 'save-transient-request' }));
       toast.success('Collection created!');
       handleCancelNewCollection();
     } catch (err) {
@@ -374,6 +397,7 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
         confirmText="Save"
         cancelText="Cancel"
         hideFooter={true}
+        dataTestId="save-transient-request-modal"
       >
         <div className="save-request-form">
           <div className="form-section">
@@ -382,6 +406,7 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
             </label>
             <input
               id="request-name"
+              data-testid="save-transient-request-name"
               type="text"
               className="form-input textbox"
               autoComplete="off"
@@ -794,7 +819,7 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
               Cancel
             </Button>
             {!isSelectingCollection && (
-              <Button type="button" color="primary" onClick={handleConfirm}>
+              <Button type="button" color="primary" onClick={handleConfirm} data-testid="save-transient-request-submit">
                 Save
               </Button>
             )}

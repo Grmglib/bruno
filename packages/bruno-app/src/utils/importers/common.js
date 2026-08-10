@@ -12,6 +12,7 @@ import { isOpenApiSpec } from './openapi-collection';
 import { isPostmanCollection } from './postman-collection';
 import { isInsomniaCollection } from './insomnia-collection';
 import { isApidogCollection } from './apidog-collection';
+import { valueToString } from '@usebruno/common/utils';
 
 export const validateSchema = async (collections = []) => {
   collections = Array.isArray(collections) ? collections : [collections];
@@ -58,12 +59,24 @@ export const updateUidsInCollection = (_collection) => {
         each(get(example, 'response.headers'), (header) => (header.uid = uuid()));
       });
 
+      each(get(item, 'root.request.headers'), (header) => (header.uid = header.uid || uuid()));
+      each(get(item, 'root.request.vars.req'), (v) => (v.uid = v.uid || uuid()));
+      each(get(item, 'root.request.vars.res'), (v) => (v.uid = v.uid || uuid()));
+
       if (item.items && item.items.length) {
         updateItemUids(item.items);
       }
     });
   };
   updateItemUids(collection.items);
+
+  const updateRootUids = (root) => {
+    if (!root) return;
+    each(get(root, 'request.headers'), (header) => (header.uid = header.uid || uuid()));
+    each(get(root, 'request.vars.req'), (v) => (v.uid = v.uid || uuid()));
+    each(get(root, 'request.vars.res'), (v) => (v.uid = v.uid || uuid()));
+  };
+  updateRootUids(collection.root);
 
   const updateEnvUids = (envs = []) => {
     each(envs, (env) => {
@@ -99,6 +112,7 @@ export const transformItemsInCollection = (collection) => {
         item.type = `${item.type}-request`;
         const isGrpcRequest = item.type === 'grpc-request';
         const isWSRequest = item.type === 'ws-request';
+        item.request.url = valueToString(item.request.url);
 
         if (item.request.query) {
           item.request.params = item.request.query.map((queryItem) => ({
@@ -137,6 +151,10 @@ export const transformItemsInCollection = (collection) => {
             example.type = `${example.type}-request`;
             const isGrpcExample = example.type === 'grpc-request';
             const isWSExample = example.type === 'ws-request';
+
+            if (example.request) {
+              example.request.url = valueToString(example.request.url);
+            }
 
             if (example.request && example.request.query) {
               example.request.params = example.request.query.map((queryItem) => ({

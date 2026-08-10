@@ -78,6 +78,7 @@ const DeleteCollectionItem = ({ onClose, item, collectionUid }) => {
         confirmButtonColor="danger"
         handleConfirm={onConfirm}
         handleCancel={onClose}
+        dataTestId="delete-collection-item-modal"
       >
         <p className="modal-description">
           Are you sure you want to delete <span className="font-medium">{item.name}</span>?

@@ -24,6 +24,7 @@ import toast from 'react-hot-toast';
 import { showImportIssuesToast } from 'components/Toast/ImportIssuesToast';
 import get from 'lodash/get';
 import useDefaultCollectionLocation from 'hooks/useDefaultCollectionLocation';
+import { DEFAULT_COLLECTION_FORMAT } from 'utils/common/constants';
 
 const STATUS = {
   LOADING: 'loading',
@@ -168,7 +169,7 @@ export const BulkImportCollectionLocation = ({
   const [applyToGlobal, setApplyToGlobal] = useState(true);
   const [applyToCollection, setApplyToCollection] = useState(false);
   const [groupingType, setGroupingType] = useState('tags');
-  const [collectionFormat, setCollectionFormat] = useState('bru');
+  const [collectionFormat, setCollectionFormat] = useState(DEFAULT_COLLECTION_FORMAT);
   const [renamedCollectionNames, setRenamedCollectionNames] = useState({});
   const [renamedEnvironmentNames, setRenamedEnvironmentNames] = useState({});
   const [importIssues, setImportIssues] = useState({});
@@ -632,6 +633,7 @@ export const BulkImportCollectionLocation = ({
       <Modal
         size="md"
         title="Bulk Import"
+        dataTestId="bulk-import-collection-location-modal"
         confirmText={importStarted ? 'Close' : 'Import'}
         confirmDisabled={Boolean(!selectedCollections?.length)}
         handleConfirm={onSubmit}
@@ -883,6 +885,7 @@ export const BulkImportCollectionLocation = ({
                   <div className="font-semibold mb-2">Location</div>
                   <input
                     id="collection-location"
+                    data-testid="bulk-import-collection-location-input"
                     type="text"
                     placeholder="Select a location to save the collection"
                     name="collectionLocation"
@@ -925,6 +928,7 @@ export const BulkImportCollectionLocation = ({
                   <select
                     id="format"
                     name="format"
+                    data-testid="bulk-import-collection-format-selector"
                     className="block textbox mt-2 w-full"
                     value={collectionFormat}
                     onChange={(e) => setCollectionFormat(e.target.value)}

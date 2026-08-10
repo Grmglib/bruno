@@ -21,8 +21,6 @@ import CollectionSettings from 'components/CollectionSettings';
 import { DocExplorer } from '@usebruno/graphql-docs';
 
 import FileEditor from 'components/FileEditor';
-import AppView from 'components/AppView';
-import CollectionApp from 'components/CollectionApp';
 import StyledWrapper from './StyledWrapper';
 import FolderSettings from 'components/FolderSettings';
 import { getGlobalEnvironmentVariables, getGlobalEnvironmentVariablesMasked } from 'utils/collections/index';
@@ -45,12 +43,15 @@ import EnvironmentSettings from 'components/Environments/EnvironmentSettings';
 import GlobalEnvironmentSettings from 'components/Environments/GlobalEnvironmentSettings';
 import OpenAPISyncTab from 'components/OpenAPISyncTab';
 import OpenAPISpecTab from 'components/OpenAPISpecTab';
+import MockServerDashboard from 'components/MockServer/MockServerDashboard';
+import MockResponse from 'components/MockServer/MockResponse';
 import ChangelogTab from 'components/ChangelogTab';
+import { resolveMockServerInstance } from 'utils/mock-server/mock-server-instances';
 import CollapsedPanelIndicator from './CollapsedPanelIndicator';
 import { clampRequestHeightForResponse } from './paneSize';
 import { IconLoader2 } from '@tabler/icons';
 
-const MIN_LEFT_PANE_WIDTH = 300;
+const MIN_LEFT_PANE_WIDTH = 350;
 const MIN_RIGHT_PANE_WIDTH = 490;
 const MIN_TOP_PANE_HEIGHT = 150;
 const MIN_BOTTOM_PANE_HEIGHT = 150;
@@ -99,6 +100,11 @@ const ResponsePaneContent = React.memo(({ item, collection }) => {
 });
 
 ResponsePaneContent.displayName = 'ResponsePaneContent';
+// Tabs whose response pane we auto-collapsed when the AI sidebar docked.
+// Module-level because the panel remounts per tab (key={activeTabUid}) — a
+// tab is restored here only once the sidebar is gone AND the user didn't
+// expand it manually in the meantime.
+const aiAutoCollapsedTabs = new Set();
 
 const RequestTabPanel = () => {
   const dispatch = useDispatch();
@@ -109,9 +115,17 @@ const RequestTabPanel = () => {
   const _collections = useSelector((state) => state.collections.collections);
   const preferences = useSelector((state) => state.app.preferences);
   const { workspaces, activeWorkspaceUid } = useSelector((state) => state.workspaces);
+  const resolvedMockServerInstance = useSelector((state) => {
+    if (!focusedTab || (focusedTab.type !== 'mock-server' && focusedTab.type !== 'mock-response')) {
+      return null;
+    }
+
+    return resolveMockServerInstance(state, focusedTab);
+  });
   const activeWorkspace = workspaces.find((w) => w.uid === activeWorkspaceUid);
   const isVerticalLayout = preferences?.layout?.responsePaneOrientation === 'vertical';
   const isConsoleOpen = useSelector((state) => state.logs.isConsoleOpen);
+  const isAiSidebarDocked = useSelector((state) => state.chat.isOpen && !state.chat.isPoppedOut);
 
   const isRequestTab = focusedTab && ['request', 'http-request', 'grpc-request', 'ws-request', 'graphql-request'].includes(focusedTab.type);
   useKeybinding('sendRequest', (e) => {
@@ -287,6 +301,17 @@ const RequestTabPanel = () => {
     setDragging(true);
   }, []);
 
+  const handleDragbarMouseDown = useCallback((e) => {
+    if (e.detail > 1) {
+      e.preventDefault();
+      stopDragging();
+      resetPaneBoundaries();
+      return;
+    }
+
+    startDragging(e);
+  }, [resetPaneBoundaries, startDragging, stopDragging]);
+
   const applyPointerResize = useCallback((e) => {
     if (!mainSectionRef.current) return;
     const mainRect = mainSectionRef.current.getBoundingClientRect();
@@ -341,6 +366,72 @@ const RequestTabPanel = () => {
     };
   }, [handleMouseUp, handleMouseMove]);
 
+  // Clamp leftPaneWidth when the main section shrinks (AI sidebar opens, or
+  // the window narrows). Without this the stored pixel width can exceed the
+  // available container, the section scrolls horizontally, and the response
+  // pane is pushed off-screen.
+  //
+  // Important: we ONLY react to genuine shrinks vs the last stable width. The
+  // initial observation and any growth are ignored. During mount Windows can
+  // emit a few transient narrow sizes (often 0) before layout settles — if
+  // we treated those as shrinks we'd lock leftPaneWidth at the transient value
+  // and never recover, which made several CodeMirror-driven tests flaky on
+  // Windows CI while passing on Linux.
+  const leftPaneWidthRef = useRef(leftPaneWidth);
+  useEffect(() => { leftPaneWidthRef.current = leftPaneWidth; }, [leftPaneWidth]);
+
+  useEffect(() => {
+    const el = mainSectionRef.current;
+    if (!el || isVerticalLayout) return;
+
+    let lastWidth = null;
+    let frame = null;
+    const observer = new ResizeObserver((entries) => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        const width = entries[0]?.contentRect?.width || el.getBoundingClientRect().width;
+        if (!width) return;
+
+        // Skip the first observation (initial layout) and any non-shrink — we
+        // only clamp on real reductions in available width.
+        if (lastWidth === null || width >= lastWidth) {
+          lastWidth = width;
+          return;
+        }
+        lastWidth = width;
+
+        const maxLeft = width - MIN_RIGHT_PANE_WIDTH;
+        if (leftPaneWidthRef.current > maxLeft) {
+          // Floor at MIN_LEFT_PANE_WIDTH even if maxLeft is smaller — losing
+          // a few px from the response is preferable to collapsing the
+          // request pane to zero.
+          setLeftPaneWidth(Math.max(MIN_LEFT_PANE_WIDTH, maxLeft));
+        }
+      });
+    });
+
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [setLeftPaneWidth, isVerticalLayout]);
+
+  useEffect(() => {
+    if (isVerticalLayout) return;
+    if (isAiSidebarDocked) {
+      if (responsePaneCollapsedRef.current) return;
+      aiAutoCollapsedTabs.add(activeTabUid);
+      collapseResponseRef.current();
+    } else if (aiAutoCollapsedTabs.has(activeTabUid)) {
+      aiAutoCollapsedTabs.delete(activeTabUid);
+      if (responsePaneCollapsedRef.current) {
+        expandResponseRef.current();
+      }
+    }
+  }, [isAiSidebarDocked, isVerticalLayout, activeTabUid]);
+
   useEffect(() => {
     if (!isVerticalLayout) return;
     if (responsePaneCollapsed) return;
@@ -364,7 +455,7 @@ const RequestTabPanel = () => {
     }
   }, [isConsoleOpen, isVerticalLayout, responsePaneCollapsed]);
 
-  if (typeof window == 'undefined') {
+  if (typeof window === 'undefined') {
     return <div></div>;
   }
 
@@ -386,7 +477,7 @@ const RequestTabPanel = () => {
   }
 
   if (focusedTab.type === 'changelog') {
-    return <ChangelogTab />;
+    return <ChangelogTab collectionUid={focusedTab.collectionUid} />;
   }
 
   if (focusedTab.type === 'workspaceOverview') {
@@ -395,6 +486,49 @@ const RequestTabPanel = () => {
 
   if (focusedTab.type === 'workspaceEnvironments') {
     return <GlobalEnvironmentSettings />;
+  }
+
+  if (focusedTab.type === 'mock-server') {
+    const instance = resolvedMockServerInstance;
+    if (!instance) {
+      return (
+        <div className="pb-4 px-4">
+          <div className="font-medium">Mock server not found</div>
+          <div className="text-sm mt-2 opacity-70">
+            This mock server may have been removed. Create a new one from the Mock Servers sidebar.
+          </div>
+        </div>
+      );
+    }
+
+    const instanceCollection = instance.sourceType === 'collection'
+      ? find(collections, (c) => c.uid === instance.collectionUid)
+      : (focusedTab.collectionUid ? find(collections, (c) => c.uid === focusedTab.collectionUid) : null);
+
+    return <MockServerDashboard instance={instance} collection={instanceCollection} />;
+  }
+
+  if (focusedTab.type === 'mock-response') {
+    const instance = resolvedMockServerInstance;
+    if (!instance) {
+      return (
+        <div className="pb-4 px-4">
+          <div className="font-medium">Mock server not found</div>
+        </div>
+      );
+    }
+
+    const instanceCollection = instance.sourceType === 'collection'
+      ? find(collections, (c) => c.uid === instance.collectionUid)
+      : (focusedTab.collectionUid ? find(collections, (c) => c.uid === focusedTab.collectionUid) : null);
+
+    return (
+      <MockResponse
+        instance={instance}
+        collection={instanceCollection}
+        responseUid={focusedTab.uid}
+      />
+    );
   }
 
   if (!focusedTab.uid || !focusedTab.collectionUid) {
@@ -423,7 +557,7 @@ const RequestTabPanel = () => {
     }
 
     if (example) {
-      return <ResponseExample item={item} collection={collection} example={example} />;
+      return <ResponseExample item={item} collection={collection} example={example} openInEditMode={focusedTab.openInEditMode} />;
     }
 
     const displayName = focusedTab.exampleName || focusedTab.name;
@@ -542,28 +676,14 @@ const RequestTabPanel = () => {
     );
   }
 
-  // Standalone app item (collection- or folder-level). Renders as its own tab
-  // with a Code/Preview toggle and its own ctx API surface.
-  if (item.type === 'app') {
-    return (
-      <ScopedPersistenceProvider scope={focusedTab.uid}>
-        <StyledWrapper className="flex flex-col flex-grow relative overflow-hidden">
-          <CollectionApp item={item} collection={collection} />
-        </StyledWrapper>
-      </ScopedPersistenceProvider>
-    );
-  }
-
-  const appEnabled = item.draft ? get(item, 'draft.app.enabled', false) : get(item, 'app.enabled', false);
-  if (appEnabled) {
-    const appCode = item.draft ? get(item, 'draft.app.code', '') : get(item, 'app.code', '');
-    return (
-      <ScopedPersistenceProvider scope={focusedTab.uid}>
-        <StyledWrapper className="flex flex-col flex-grow relative overflow-hidden">
-          <AppView item={item} collection={collection} code={appCode} />
-        </StyledWrapper>
-      </ScopedPersistenceProvider>
-    );
+  const itemSource = item.draft ? item.draft : item;
+  // Preview state is runtime-only, kept on the tab; unset means "preview on" so
+  // an app-enabled request opens in preview mode by default.
+  const appEnabled = item.type !== 'app'
+    && get(itemSource, 'app.enabled', false) === true
+    && focusedTab.appPreview !== false;
+  if (item.type === 'app' || appEnabled) {
+    return <StyledWrapper className="flex flex-col flex-grow relative overflow-hidden" data-testid="app-tab-placeholder" />;
   }
 
   const renderQueryUrl = () => {
@@ -646,11 +766,7 @@ const RequestTabPanel = () => {
           {!requestPaneCollapsed && !responsePaneCollapsed && (
             <div
               className="dragbar-wrapper"
-              onDoubleClick={(e) => {
-                e.preventDefault();
-                resetPaneBoundaries();
-              }}
-              onMouseDown={startDragging}
+              onMouseDown={handleDragbarMouseDown}
             >
               <div className="dragbar-handle" />
             </div>

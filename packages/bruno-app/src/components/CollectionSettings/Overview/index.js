@@ -22,9 +22,9 @@ const Overview = ({ collection }) => {
   };
 
   return (
-    <div className="h-full">
+    <div className="h-full overflow-hidden">
       <div className="grid grid-cols-5 gap-5 h-full">
-        <div className="col-span-2 overflow-clip text-ellipsis">
+        <div className="col-span-2 overflow-y-auto overflow-x-clip text-ellipsis pr-2">
           <div className="flex gap-2 items-center min-w-0">
             <button
               type="button"
@@ -42,7 +42,7 @@ const Overview = ({ collection }) => {
           <Info collection={collection} />
           <RequestsNotLoaded collection={collection} />
         </div>
-        <div className="col-span-3">
+        <div className="col-span-3 overflow-hidden">
           <Docs collection={collection} />
         </div>
       </div>

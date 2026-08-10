@@ -9,6 +9,7 @@ import DigestAuth from './DigestAuth';
 import WsseAuth from './WsseAuth';
 import ApiKeyAuth from './ApiKeyAuth/';
 import { applyInheritAuthToAllItems, saveCollectionSettings } from 'providers/ReduxStore/slices/collections/actions';
+import EdgeGridAuth from './EdgeGridAuth';
 import StyledWrapper from './StyledWrapper';
 import OAuth2 from './OAuth2';
 import NTLMAuth from './NTLMAuth';
@@ -64,6 +65,9 @@ const Auth = ({ collection }) => {
       }
       case 'apikey': {
         return <ApiKeyAuth collection={collection} />;
+      }
+      case 'akamai-edgegrid': {
+        return <EdgeGridAuth collection={collection} />;
       }
     }
   };

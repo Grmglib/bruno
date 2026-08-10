@@ -63,7 +63,7 @@ const getCollectionName = (format, rawData) => {
 
 // Convert raw data to Bruno collection format
 // Returns { collection, issues } where issues tracks items that were skipped or degraded
-const convertCollection = async (format, rawData, groupingType, collectionFormat) => {
+const convertCollection = async (format, rawData, { groupingType, collectionFormat, preserveScripts } = {}) => {
   try {
     let collection;
     let issues = [];
@@ -76,7 +76,7 @@ const convertCollection = async (format, rawData, groupingType, collectionFormat
         collection = await wsdlToBruno(rawData);
         break;
       case 'postman': {
-        const result = await postmanToBruno(rawData);
+        const result = await postmanToBruno(rawData, { preserveScripts });
         collection = result.collection;
         issues = result.issues || [];
         break;
@@ -124,12 +124,14 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
   const dispatch = useDispatch();
   const [groupingType, setGroupingType] = useState('tags');
   const [collectionFormat, setCollectionFormat] = useState(DEFAULT_COLLECTION_FORMAT);
-  const [showFileFormat, setShowFileFormat] = useState(false);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [enableCheckForSpecUpdates, setEnableCheckForSpecUpdates] = useState(false);
+  const [preserveScripts, setPreserveScripts] = useState(false);
   const dropdownTippyRef = useRef();
   const optionsDropdownTippyRef = useRef();
   const isOpenApi = format === 'openapi';
   const isApidog = format === 'apidog';
+  const isPostman = format === 'postman';
   const isZipImport = format === 'bruno-zip';
   const isOpenApiFromUrl = isOpenApi && !!sourceUrl && !filePath;
   const isOpenApiFromFile = isOpenApi && !!filePath && !sourceUrl;
@@ -158,7 +160,7 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
         .required('Location is required')
     }),
     onSubmit: async (values) => {
-      const conversionResult = await convertCollection(format, rawData, groupingType, collectionFormat);
+      const conversionResult = await convertCollection(format, rawData, { groupingType, collectionFormat, preserveScripts });
       const options = { format: collectionFormat };
 
       if (isApidog) {
@@ -315,13 +317,13 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
                 <Dropdown onCreate={onOptionsDropdownCreate} icon={<ImportOptions />} placement="bottom-start">
                   <div
                     className="dropdown-item"
-                    data-testid="show-file-format-toggle"
+                    data-testid="show-advanced-options-toggle"
                     onClick={() => {
                       optionsDropdownTippyRef?.current?.hide();
-                      setShowFileFormat(!showFileFormat);
+                      setShowAdvancedOptions(!showAdvancedOptions);
                     }}
                   >
-                    {showFileFormat ? 'Hide File Format' : 'Show File Format'}
+                    {showAdvancedOptions ? 'Hide Advanced Options' : 'Show Advanced Options'}
                   </div>
                 </Dropdown>
               </div>
@@ -376,8 +378,7 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
               {isApidog && apidogModuleNames.length > 0 && (
                 <div className="mt-4 text-sm text-gray-600 dark:text-gray-300" data-testid="apidog-import-info">
                   <p>
-                    {apidogModuleNames.length} collections will be created in the
-                    {' '}
+                    {apidogModuleNames.length} collections will be created in the{' '}
                     <strong>{getApidogProjectFolderName(rawData)}</strong>
                     / folder:
                   </p>
@@ -387,7 +388,7 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
                 </div>
               )}
 
-              {showFileFormat && !isZipImport && (
+              {showAdvancedOptions && !isZipImport && (
                 <div className="mt-4">
                   <label htmlFor="format" className="flex items-center font-medium">
                     File Format
@@ -412,6 +413,24 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
                     <option value="bru">BRU Format (.bru)</option>
                   </select>
                 </div>
+              )}
+
+              {showAdvancedOptions && isPostman && (
+                <label className="mt-4 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={preserveScripts}
+                    onChange={(e) => setPreserveScripts(e.target.checked)}
+                    className="checkbox cursor-pointer mt-0.5"
+                    data-testid="preserve-scripts-toggle"
+                  />
+                  <div>
+                    <span className="checkbox-option-label">Preserve scripts</span>
+                    <p className="checkbox-option-description">
+                      Import Postman scripts without translating them.
+                    </p>
+                  </div>
+                </label>
               )}
             </div>
 
@@ -445,23 +464,23 @@ const ImportCollectionLocation = ({ onClose, handleSubmit, rawData, format, sour
               </div>
             )}
             {showCheckForSpecUpdatesOption && (
-              <div className={`mt-4 ${isSwagger2 ? 'opacity-50 pointer-events-none' : ''}`}>
-                <label className={`flex items-center gap-2 ${isSwagger2 ? '' : 'cursor-pointer'}`}>
-                  <input
-                    type="checkbox"
-                    checked={isSwagger2 ? false : enableCheckForSpecUpdates}
-                    onChange={(e) => setEnableCheckForSpecUpdates(e.target.checked)}
-                    disabled={isSwagger2}
-                    className={`checkbox ${isSwagger2 ? '' : 'cursor-pointer'}`}
-                  />
-                  <span className="font-medium">Check for Spec Updates</span>
-                </label>
-                <p className="text-muted text-xs mt-1">
-                  {isSwagger2
-                    ? 'OpenAPI Sync is not supported for Swagger 2.0 specs.'
-                    : 'Stay notified of spec changes and sync your collection with the spec.'}
-                </p>
-              </div>
+              <label className={`mt-4 flex items-start gap-2 ${isSwagger2 ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+                <input
+                  type="checkbox"
+                  checked={isSwagger2 ? false : enableCheckForSpecUpdates}
+                  onChange={(e) => setEnableCheckForSpecUpdates(e.target.checked)}
+                  disabled={isSwagger2}
+                  className={`checkbox mt-0.5 ${isSwagger2 ? '' : 'cursor-pointer'}`}
+                />
+                <div>
+                  <span className="checkbox-option-label">Check for Spec Updates</span>
+                  <p className="checkbox-option-description">
+                    {isSwagger2
+                      ? 'OpenAPI Sync is not supported for Swagger 2.0 specs.'
+                      : 'Stay notified of spec changes and sync your collection with the spec.'}
+                  </p>
+                </div>
+              </label>
             )}
           </form>
         </Modal>

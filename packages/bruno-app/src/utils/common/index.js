@@ -321,7 +321,7 @@ export const formatResponse = (data, dataBufferString, mode, filter, bufferThres
       if (filter) {
         return safeStringifyJSON(applyJSONPathFilter(data, filter), true);
       }
-    } catch (error) {}
+    } catch (error) { }
 
     if (isVeryLargeResponse) {
       return getRawResponseText(data, dataBufferString);
@@ -329,7 +329,7 @@ export const formatResponse = (data, dataBufferString, mode, filter, bufferThres
 
     try {
       return fastJsonFormat(rawData);
-    } catch (error) {}
+    } catch (error) { }
 
     if (typeof data === 'string') {
       return data;
@@ -561,3 +561,17 @@ export function isHexFormat(str) {
 
   return false;
 }
+
+export const formatProxyTimestamp = (timestamp) => {
+  return new Date(timestamp)
+    .toLocaleString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
+    .replace(/[\u00A0\u202F]/g, ' ')
+    .replace(/\b(a|p)m\b/gi, (match) => match.toUpperCase());
+};
