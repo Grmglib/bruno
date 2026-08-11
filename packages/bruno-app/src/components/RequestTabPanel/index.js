@@ -502,8 +502,8 @@ const RequestTabPanel = () => {
     }
 
     const instanceCollection = instance.sourceType === 'collection'
-      ? find(collections, (c) => c.uid === instance.collectionUid)
-      : (focusedTab.collectionUid ? find(collections, (c) => c.uid === focusedTab.collectionUid) : null);
+      ? find(_collections, (c) => c.uid === instance.collectionUid)
+      : (focusedTab.collectionUid ? find(_collections, (c) => c.uid === focusedTab.collectionUid) : null);
 
     return <MockServerDashboard instance={instance} collection={instanceCollection} />;
   }
@@ -519,8 +519,8 @@ const RequestTabPanel = () => {
     }
 
     const instanceCollection = instance.sourceType === 'collection'
-      ? find(collections, (c) => c.uid === instance.collectionUid)
-      : (focusedTab.collectionUid ? find(collections, (c) => c.uid === focusedTab.collectionUid) : null);
+      ? find(_collections, (c) => c.uid === instance.collectionUid)
+      : (focusedTab.collectionUid ? find(_collections, (c) => c.uid === focusedTab.collectionUid) : null);
 
     return (
       <MockResponse

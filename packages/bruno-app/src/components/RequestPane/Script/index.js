@@ -93,6 +93,7 @@ const Script = ({ item, collection }) => {
 
   const hasPreRequestScript = requestScript && requestScript.trim().length > 0;
   const hasPostResponseScript = responseScript && responseScript.trim().length > 0;
+  const requestContext = buildRequestContextFromItem(item);
 
   const onScriptTabChange = (tab) => {
     dispatch(updateScriptPaneTab({ uid: item.uid, scriptPaneTab: tab }));
