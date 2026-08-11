@@ -12,7 +12,8 @@ const {
   deleteCollectionGroup,
   assignCollectionToGroup,
   readWorkspaceConfig,
-  generateYamlContent
+  generateYamlContent,
+  updateCollectionInWorkspace
 } = require('../../src/utils/workspace-config');
 const {
   assignCollectionToGroupWithFilesystem,
@@ -276,6 +277,68 @@ describe('Git remote on workspace collections', () => {
     } finally {
       fs.rmSync(outsideDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('updateCollectionInWorkspace', () => {
+  let workspacePath;
+
+  beforeEach(() => {
+    workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), 'bruno-ws-rename-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(workspacePath, { recursive: true, force: true });
+  });
+
+  test('updates the matching collection name and path while preserving metadata', async () => {
+    fs.writeFileSync(path.join(workspacePath, 'workspace.yml'), [
+      'opencollection: 1.0.0',
+      'info:',
+      '  name: Test',
+      '  type: workspace',
+      'collections:',
+      '  - name: Old API',
+      '    path: collections/old-api',
+      '    remote: https://example.com/api.git',
+      '    group: group-1',
+      'specs: []',
+      'docs: \'\''
+    ].join('\n'));
+
+    const result = await updateCollectionInWorkspace(
+      workspacePath,
+      path.join(workspacePath, 'collections', 'old-api'),
+      {
+        name: 'New API',
+        path: path.join(workspacePath, 'collections', 'new-api')
+      }
+    );
+
+    expect(result.collections).toEqual([{
+      name: 'New API',
+      path: 'collections/new-api',
+      remote: 'https://example.com/api.git',
+      group: 'group-1'
+    }]);
+  });
+
+  test('returns null when the collection path is not present', async () => {
+    fs.writeFileSync(path.join(workspacePath, 'workspace.yml'), [
+      'opencollection: 1.0.0',
+      'info:',
+      '  name: Test',
+      '  type: workspace',
+      'collections: []',
+      'specs: []',
+      'docs: \'\''
+    ].join('\n'));
+
+    await expect(updateCollectionInWorkspace(
+      workspacePath,
+      path.join(workspacePath, 'collections', 'missing'),
+      { name: 'Missing', path: path.join(workspacePath, 'collections', 'new') }
+    )).resolves.toBeNull();
   });
 });
 

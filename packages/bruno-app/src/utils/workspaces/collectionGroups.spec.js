@@ -31,6 +31,28 @@ describe('collectionGroups utils', () => {
     expect(tree[2].entries[0].collection.name).toBe('Root');
   });
 
+  test('keeps a collection in its group when its path changes', () => {
+    const renamedWorkspaceCollections = workspaceCollections.map((collection) => (
+      collection.path === '/ws/collections/api'
+        ? { ...collection, path: '/ws/collections/renamed-api' }
+        : collection
+    ));
+    const renamedLoadedCollections = loadedCollections.map((collection) => (
+      collection.uid === 'c1'
+        ? { ...collection, pathname: '/ws/collections/renamed-api' }
+        : collection
+    ));
+
+    const entries = buildSidebarEntries({
+      workspaceCollections: renamedWorkspaceCollections,
+      loadedCollections: renamedLoadedCollections
+    });
+    const tree = buildSidebarTree({ collectionGroups, sidebarEntries: entries });
+
+    expect(tree[0].entries[0].workspaceCollection.group).toBe('g1');
+    expect(tree[0].entries[0].collection.pathname).toBe('/ws/collections/renamed-api');
+  });
+
   test('buildSidebarTree puts entries with invalid group in root', () => {
     const entries = buildSidebarEntries({
       workspaceCollections: [{ name: 'Orphan', path: '/ws/collections/orphan', group: 'missing' }],

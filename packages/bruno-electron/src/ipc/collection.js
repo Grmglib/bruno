@@ -87,10 +87,12 @@ const {
   normalizeCollectionEntry,
   addCollectionToWorkspace,
   removeCollectionFromWorkspace,
-  getWorkspacesWithCollection
+  getWorkspacesWithCollection,
+  updateCollectionInWorkspace
 } = require('../utils/workspace-config');
 const { resolveWorkspaceCollectionLocation } = require('../utils/workspace-collection-location');
 const LastOpenedWorkspaces = require('../store/last-opened-workspaces');
+const LastOpenedCollections = require('../store/last-opened-collections');
 
 const environmentSecretsStore = new EnvironmentSecretsStore();
 const collectionSecurityStore = new CollectionSecurityStore();
@@ -490,37 +492,166 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
 
   // rename collection
   ipcMain.handle('renderer:rename-collection', async (event, newName, collectionPathname) => {
+    let oldCollectionPathname = collectionPathname;
+    let newCollectionPathname = collectionPathname;
+    let moved = false;
+    let configPathname = null;
+    let originalConfigContent = null;
+    let workspaceSnapshots = [];
+    let lastOpenedCollectionsSnapshot = null;
+    const remappedRequestPaths = [];
+
     try {
       const format = getCollectionFormat(collectionPathname);
+      const lastOpenedWorkspaces = new LastOpenedWorkspaces();
+      const workspacePaths = getWorkspacesWithCollection(collectionPathname, lastOpenedWorkspaces.getAll());
 
+      configPathname = path.join(
+        collectionPathname,
+        format === 'yml' ? 'opencollection.yml' : 'bruno.json'
+      );
+      originalConfigContent = fs.readFileSync(configPathname, 'utf8');
+
+      let updatedConfigContent;
       if (format === 'yml') {
-        const configFilePath = path.join(collectionPathname, 'opencollection.yml');
-        const content = fs.readFileSync(configFilePath, 'utf8');
         const {
           brunoConfig,
           collectionRoot
-        } = parseCollection(content, { format: 'yml' });
+        } = parseCollection(originalConfigContent, { format: 'yml' });
 
         brunoConfig.name = newName;
-
-        const newContent = stringifyCollection(collectionRoot, brunoConfig, { format: 'yml' });
-        await writeFile(path.join(collectionPathname, 'opencollection.yml'), newContent);
-      } else if (format === 'bru') {
-        const configFilePath = path.join(collectionPathname, 'bruno.json');
-        const content = fs.readFileSync(configFilePath, 'utf8');
-        const brunoConfig = JSON.parse(content);
-        brunoConfig.name = newName;
-        const newContent = await stringifyJson(brunoConfig);
-        await writeFile(path.join(collectionPathname, 'bruno.json'), newContent);
+        updatedConfigContent = stringifyCollection(collectionRoot, brunoConfig, { format: 'yml' });
       } else {
-        throw new Error(`Invalid format: ${format}`);
+        const brunoConfig = JSON.parse(originalConfigContent);
+        brunoConfig.name = newName;
+        updatedConfigContent = await stringifyJson(brunoConfig);
+      }
+
+      const parentPath = path.dirname(collectionPathname);
+      let folderName = sanitizeName(newName);
+
+      if (!folderName) {
+        throw new Error('Invalid collection name');
+      }
+
+      if (folderName !== path.basename(collectionPathname)) {
+        if (fs.existsSync(path.join(parentPath, folderName))) {
+          folderName = await findUniqueFolderName(folderName, parentPath);
+        }
+
+        newCollectionPathname = path.join(parentPath, folderName);
+      }
+
+      const requestFiles = await searchForRequestFiles(collectionPathname);
+      const requestPathRelocations = requestFiles.map((oldFilePath) => ({
+        oldPath: oldFilePath,
+        newPath: path.join(
+          newCollectionPathname,
+          path.relative(collectionPathname, oldFilePath)
+        )
+      }));
+
+      workspaceSnapshots = workspacePaths.map((workspacePath) => ({
+        workspacePath,
+        filePath: path.join(workspacePath, 'workspace.yml'),
+        content: fs.readFileSync(path.join(workspacePath, 'workspace.yml'), 'utf8')
+      }));
+      lastOpenedCollectionsSnapshot = new LastOpenedCollections().getAll();
+
+      if (path.normalize(newCollectionPathname) !== path.normalize(collectionPathname)) {
+        if (watcher.hasWatcher(collectionPathname)) {
+          watcher.removeWatcher(
+            collectionPathname,
+            mainWindow,
+            generateUidBasedOnHash(collectionPathname)
+          );
+        }
+
+        await moveCollectionDirectory(collectionPathname, newCollectionPathname);
+        moved = true;
+
+        if (!fs.existsSync(path.join(newCollectionPathname, path.basename(configPathname)))) {
+          throw new Error(`Collection configuration was not moved to: ${newCollectionPathname}`);
+        }
+
+        for (const relocation of requestPathRelocations) {
+          if (!fs.existsSync(relocation.newPath)) {
+            throw new Error(`Collection file was not moved to: ${relocation.newPath}`);
+          }
+          moveRequestUid(relocation.oldPath, relocation.newPath);
+          remappedRequestPaths.push(relocation);
+        }
+        configPathname = path.join(
+          newCollectionPathname,
+          format === 'yml' ? 'opencollection.yml' : 'bruno.json'
+        );
+      }
+
+      await writeFile(configPathname, updatedConfigContent);
+
+      for (const workspacePath of workspacePaths) {
+        await updateCollectionInWorkspace(workspacePath, oldCollectionPathname, {
+          name: newName,
+          path: newCollectionPathname
+        });
+      }
+
+      const lastOpenedCollections = new LastOpenedCollections();
+      lastOpenedCollections.update(lastOpenedCollectionsSnapshot.map((collectionPath) => (
+        path.normalize(collectionPath) === path.normalize(oldCollectionPathname)
+          ? newCollectionPathname
+          : collectionPath
+      )));
+
+      if (moved) {
+        await openCollection(mainWindow, watcher, newCollectionPathname);
       }
 
       mainWindow.webContents.send('main:collection-renamed', {
-        collectionPathname,
+        oldCollectionPathname,
+        collectionPathname: newCollectionPathname,
         newName
       });
+
+      return {
+        oldCollectionPathname,
+        collectionPathname: newCollectionPathname,
+        newName
+      };
     } catch (error) {
+      try {
+        for (const relocation of remappedRequestPaths.reverse()) {
+          moveRequestUid(relocation.newPath, relocation.oldPath);
+        }
+
+        if (moved && fs.existsSync(newCollectionPathname)) {
+          await moveCollectionDirectory(newCollectionPathname, oldCollectionPathname);
+        }
+
+        if (originalConfigContent && configPathname) {
+          const restoredConfigPath = path.join(
+            oldCollectionPathname,
+            path.basename(configPathname)
+          );
+          await writeFile(restoredConfigPath, originalConfigContent);
+        }
+
+        for (const snapshot of workspaceSnapshots) {
+          await writeFile(snapshot.filePath, snapshot.content);
+        }
+
+        if (lastOpenedCollectionsSnapshot) {
+          new LastOpenedCollections().update(lastOpenedCollectionsSnapshot);
+        }
+
+        if (moved && fs.existsSync(oldCollectionPathname)) {
+          await openCollection(mainWindow, watcher, oldCollectionPathname);
+        }
+      } catch (rollbackError) {
+        console.error('Failed to roll back collection rename:', rollbackError);
+        error.message = `${error.message}. Rollback also failed: ${rollbackError.message}`;
+      }
+
       return Promise.reject(error);
     }
   });

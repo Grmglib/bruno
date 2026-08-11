@@ -5,7 +5,13 @@ const archiver = require('archiver');
 const extractZip = require('extract-zip');
 const { ipcMain, dialog } = require('electron');
 const isDev = require('electron-is-dev');
-const { createDirectory, sanitizeName, writeFile, DEFAULT_GITIGNORE } = require('../utils/filesystem');
+const {
+  createDirectory,
+  sanitizeName,
+  writeFile,
+  DEFAULT_GITIGNORE,
+  searchForRequestFiles
+} = require('../utils/filesystem');
 const yaml = require('js-yaml');
 const LastOpenedWorkspaces = require('../store/last-opened-workspaces');
 const { defaultWorkspaceManager } = require('../store/default-workspace');
@@ -37,8 +43,11 @@ const {
   normalizeCollectionEntry,
   validateWorkspacePath,
   validateWorkspaceDirectory,
-  getWorkspaceUid
+  getWorkspaceUid,
+  getNormalizedAbsoluteCollectionPath
 } = require('../utils/workspace-config');
+const { generateUidBasedOnHash } = require('../utils/common');
+const { moveRequestUid } = require('../cache/requestUids');
 const {
   assignCollectionToGroupWithFilesystem,
   renameCollectionGroupWithFilesystem,
@@ -370,8 +379,89 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) =
 
   ipcMain.handle('renderer:rename-workspace', async (event, workspacePath, newName) => {
     try {
+      const workspaceUid = getWorkspaceUid(workspacePath);
       await updateWorkspaceName(workspacePath, newName);
-      return { success: true };
+
+      if (workspaceUid === 'default') {
+        return { success: true, oldPath: workspacePath, newPath: workspacePath, workspaceUid };
+      }
+
+      const parentPath = path.dirname(workspacePath);
+      let folderName = sanitizeName(newName);
+      if (!folderName) {
+        throw new Error('Invalid workspace name');
+      }
+
+      if (folderName !== path.basename(workspacePath) && fs.existsSync(path.join(parentPath, folderName))) {
+        let counter = 1;
+        const baseFolderName = folderName;
+        while (fs.existsSync(path.join(parentPath, folderName))) {
+          folderName = `${baseFolderName} - ${counter}`;
+          counter += 1;
+        }
+      }
+
+      const newWorkspacePath = path.join(parentPath, folderName);
+      if (path.normalize(newWorkspacePath) === path.normalize(workspacePath)) {
+        return { success: true, oldPath: workspacePath, newPath: workspacePath, workspaceUid };
+      }
+
+      const workspaceConfig = readWorkspaceConfig(workspacePath);
+      const collectionRelocations = (workspaceConfig.collections || []).map((entry) => {
+        const oldCollectionPath = getNormalizedAbsoluteCollectionPath(workspacePath, entry);
+        const relativeCollectionPath = path.relative(workspacePath, oldCollectionPath);
+        const isInsideWorkspace = relativeCollectionPath
+          && !relativeCollectionPath.startsWith('..')
+          && !path.isAbsolute(relativeCollectionPath);
+        const newCollectionPath = path.join(newWorkspacePath, relativeCollectionPath);
+        return {
+          oldPath: oldCollectionPath,
+          newPath: isInsideWorkspace ? newCollectionPath : oldCollectionPath,
+          wasOpen: isInsideWorkspace && Boolean(collectionWatcher?.hasWatcher?.(oldCollectionPath))
+        };
+      });
+      const requestRelocations = [];
+      for (const relocation of collectionRelocations.filter((entry) => entry.wasOpen)) {
+        const requestFiles = await searchForRequestFiles(relocation.oldPath);
+        for (const oldFilePath of requestFiles) {
+          const relativePath = path.relative(relocation.oldPath, oldFilePath);
+          requestRelocations.push({
+            oldPath: oldFilePath,
+            newPath: path.join(relocation.newPath, relativePath)
+          });
+        }
+      }
+
+      if (workspaceWatcher) {
+        workspaceWatcher.removeWatcher(workspacePath);
+      }
+      for (const relocation of collectionRelocations.filter((entry) => entry.wasOpen)) {
+        if (relocation.wasOpen) {
+          collectionWatcher.removeWatcher(
+            relocation.oldPath,
+            mainWindow,
+            generateUidBasedOnHash(relocation.oldPath)
+          );
+        }
+      }
+
+      await fsExtra.move(workspacePath, newWorkspacePath, { overwrite: false });
+
+      for (const relocation of requestRelocations) {
+        moveRequestUid(relocation.oldPath, relocation.newPath);
+      }
+
+      lastOpenedWorkspaces.remove(workspacePath);
+      lastOpenedWorkspaces.add(newWorkspacePath);
+      workspaceWatcher.addWatcher(mainWindow, newWorkspacePath);
+
+      return {
+        success: true,
+        oldPath: workspacePath,
+        newPath: newWorkspacePath,
+        workspaceUid: getWorkspaceUid(newWorkspacePath),
+        collectionRelocations
+      };
     } catch (error) {
       throw error;
     }

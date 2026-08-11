@@ -606,6 +606,33 @@ const getWorkspacesWithCollection = (collectionPath, workspacePaths = []) => {
   return workspacesWithCollection;
 };
 
+const updateCollectionInWorkspace = async (workspacePath, oldCollectionPath, collection) => {
+  return withLock(getWorkspaceLockKey(workspacePath), async () => {
+    const config = readWorkspaceConfig(workspacePath);
+    const oldPath = path.normalize(oldCollectionPath);
+    let matched = false;
+
+    config.collections = (config.collections || []).map((entry) => {
+      if (getNormalizedAbsoluteCollectionPath(workspacePath, entry) !== oldPath) {
+        return entry;
+      }
+
+      matched = true;
+      return {
+        ...entry,
+        ...normalizeCollectionEntry(workspacePath, collection)
+      };
+    });
+
+    if (!matched) {
+      return null;
+    }
+
+    await writeWorkspaceFileAtomic(workspacePath, generateYamlContent(config));
+    return config;
+  });
+};
+
 const removeCollectionFromWorkspace = async (workspacePath, collectionPath) => {
   return withLock(getWorkspaceLockKey(workspacePath), async () => {
     const config = readWorkspaceConfig(workspacePath);
@@ -1017,6 +1044,7 @@ module.exports = {
   addCollectionToWorkspace,
   removeCollectionFromWorkspace,
   getWorkspacesWithCollection,
+  updateCollectionInWorkspace,
   setCollectionGitRemote,
   clearCollectionGitRemote,
   reorderWorkspaceCollections,

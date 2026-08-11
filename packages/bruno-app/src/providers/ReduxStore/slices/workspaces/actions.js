@@ -1068,14 +1068,63 @@ export const renameWorkspaceAction = (workspaceUid, newName) => {
         throw new Error('Workspace not found');
       }
 
-      await handleWorkspaceAction((...args) => ipcRenderer.invoke('renderer:rename-workspace', ...args),
-        workspace.pathname,
-        newName);
+      const result = await ipcRenderer.invoke('renderer:rename-workspace', workspace.pathname, newName);
 
-      dispatch(updateWorkspace({
-        uid: workspaceUid,
-        name: newName
-      }));
+      if (!result?.newPath || normalizePath(result.newPath) === normalizePath(workspace.pathname)) {
+        dispatch(updateWorkspace({
+          uid: workspaceUid,
+          name: newName
+        }));
+        return;
+      }
+
+      const collectionPathMap = new Map(
+        (result.collectionRelocations || []).map(({ oldPath, newPath }) => [
+          normalizePath(oldPath),
+          newPath
+        ])
+      );
+
+      for (const relocation of result.collectionRelocations || []) {
+        if (!relocation.wasOpen) {
+          continue;
+        }
+
+        const collection = findCollectionByPathname(getState().collections.collections, relocation.oldPath);
+        if (collection) {
+          dispatch(closeAllCollectionTabs({ collectionUid: collection.uid }));
+          dispatch(removeCollection({ collectionUid: collection.uid }));
+        }
+      }
+
+      const updatedWorkspace = {
+        ...workspace,
+        uid: result.workspaceUid,
+        pathname: result.newPath,
+        name: newName,
+        collections: (workspace.collections || []).map((collection) => ({
+          ...collection,
+          path: collectionPathMap.get(normalizePath(collection.path)) || collection.path
+        })),
+        collectionGroups: (workspace.collectionGroups || []).map((group) => ({
+          ...group,
+          path: group.path && collectionPathMap.get(normalizePath(group.path)) || group.path
+        }))
+      };
+
+      dispatch(removeWorkspace(workspaceUid));
+      dispatch(createWorkspace(updatedWorkspace));
+      if (getState().workspaces.activeWorkspaceUid === workspaceUid) {
+        dispatch(setActiveWorkspace(result.workspaceUid));
+      }
+
+      await waitForNextTick();
+      const pathsToReopen = (result.collectionRelocations || [])
+        .filter((relocation) => relocation.wasOpen)
+        .map((relocation) => relocation.newPath);
+      if (pathsToReopen.length) {
+        await dispatch(openMultipleCollections(pathsToReopen, { workspacePath: result.newPath }));
+      }
     } catch (error) {
       throw error;
     }

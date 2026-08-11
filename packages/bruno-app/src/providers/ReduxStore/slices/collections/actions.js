@@ -80,7 +80,7 @@ import {
 import { each } from 'lodash';
 import { closeAllCollectionTabs, closeTabs as _closeTabs, focusTab, restoreTabs, reopenLastClosedTab } from 'providers/ReduxStore/slices/tabs';
 import { clearOpenApiSyncTabState } from 'providers/ReduxStore/slices/openapi-sync';
-import { removeCollectionFromWorkspace } from 'providers/ReduxStore/slices/workspaces';
+import { removeCollectionFromWorkspace, updateWorkspace } from 'providers/ReduxStore/slices/workspaces';
 import { resolveRequestFilename } from 'utils/common/platform';
 import { interpolateUrl, parsePathParams, splitOnFirst } from 'utils/url/index';
 import { sendCollectionOauth2Request as _sendCollectionOauth2Request } from 'utils/network/index';
@@ -154,13 +154,48 @@ const generateUniqueName = (originalName, existingItems, isFolder) => {
 export const renameCollection = (newName, collectionUid) => (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);
+  const activeWorkspace = state.workspaces.workspaces.find(
+    (workspace) => workspace.uid === state.workspaces.activeWorkspaceUid
+  );
 
   return new Promise((resolve, reject) => {
     if (!collection) {
       return reject(new Error('Collection not found'));
     }
     const { ipcRenderer } = window;
-    ipcRenderer.invoke('renderer:rename-collection', newName, collection.pathname).then(resolve).catch(reject);
+
+    ipcRenderer
+      .invoke('renderer:rename-collection', newName, collection.pathname)
+      .then(async (result) => {
+        if (result?.collectionPathname && normalizePath(result.collectionPathname) !== normalizePath(collection.pathname)) {
+          dispatch(closeAllCollectionTabs({ collectionUid }));
+          if (activeWorkspace) {
+            dispatch(updateWorkspace({
+              uid: activeWorkspace.uid,
+              collections: (activeWorkspace.collections || []).map((workspaceCollection) => (
+                normalizePath(workspaceCollection.path) === normalizePath(collection.pathname)
+                  ? { ...workspaceCollection, path: result.collectionPathname }
+                  : workspaceCollection
+              ))
+            }));
+          }
+          dispatch(_removeCollection({ collectionUid }));
+          await waitForNextTick();
+
+          const openResult = await dispatch(openMultipleCollections(
+            [result.collectionPathname],
+            activeWorkspace?.pathname ? { workspacePath: activeWorkspace.pathname } : {}
+          ));
+          const reopened = (openResult?.opened || []).some(
+            (openedPath) => normalizePath(openedPath) === normalizePath(result.collectionPathname)
+          );
+          if (!reopened) {
+            throw new Error('Collection renamed but could not be re-opened. Reload the workspace to access it.');
+          }
+        }
+        resolve(result);
+      })
+      .catch(reject);
   });
 };
 

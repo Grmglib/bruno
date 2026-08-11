@@ -3235,11 +3235,17 @@ export const collectionsSlice = createSlice({
       }
     },
     collectionRenamedEvent: (state, action) => {
-      const { collectionPathname, newName } = action.payload;
-      const collection = findCollectionByPathname(state.collections, collectionPathname);
+      const { oldCollectionPathname, collectionPathname, newName } = action.payload;
+      const collection = findCollectionByPathname(
+        state.collections,
+        oldCollectionPathname || collectionPathname
+      ) || findCollectionByPathname(state.collections, collectionPathname);
 
       if (collection) {
         collection.name = newName;
+        if (collectionPathname) {
+          collection.pathname = collectionPathname;
+        }
       }
     },
     resetRunResults: (state, action) => {

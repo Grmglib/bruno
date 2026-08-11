@@ -67,8 +67,15 @@ const RenameCollectionItem = ({ collectionUid, item, onClose }) => {
           collectionUid
         };
         renameConfig['newName'] = newName;
-        if (itemFilename !== newFilename) {
-          renameConfig['newFilename'] = newFilename;
+        if (isEditing) {
+          if (itemFilename !== newFilename) {
+            renameConfig['newFilename'] = newFilename;
+          }
+        } else {
+          const synchronizedFilename = sanitizeName(newName);
+          if (itemFilename !== synchronizedFilename) {
+            renameConfig['newFilename'] = synchronizedFilename;
+          }
         }
         await dispatch(renameItem(renameConfig));
         if (isFolder) {
