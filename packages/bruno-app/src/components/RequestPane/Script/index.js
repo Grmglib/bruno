@@ -40,6 +40,8 @@ const Script = ({ item, collection }) => {
   // CodeMirror's scrollTo() is silently ignored when the editor is inside a display:none container
   // (TabsContent hides inactive tabs via display:none). So the scroll set during componentDidMount
   // is lost for the hidden editor. After refresh() recalculates layout, we re-apply scrollTo().
+  // The same workaround lives in RequestPane/GrpcScript/ScriptEditorPane — the two are independent
+  // copies, so a fix here does not reach it.
   useEffect(() => {
     const timer = setTimeout(() => {
       if (activeTab === 'pre-request' && preRequestEditorRef.current?.editor) {
@@ -102,7 +104,7 @@ const Script = ({ item, collection }) => {
   return (
     <div className="w-full h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={onScriptTabChange}>
-        <TabsList>
+        <TabsList dataTestId="script-sub-tabs">
           <TabsTrigger value="pre-request">
             Pre Request
             {hasPreRequestScript && (

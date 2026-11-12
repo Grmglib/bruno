@@ -12,7 +12,7 @@ import {
   syncRunningMockServers
 } from 'providers/ReduxStore/slices/mock-server/index';
 import { isMockServerLogListening } from 'utils/mock-server/mock-server-log-subscription';
-import { syncMockServersFromWorkspaceStore } from 'utils/mock-server/mock-server-instances';
+import { mockServerFileEvent, mockServerFileDeletedEvent } from 'utils/mock-server/mock-server-instances';
 import {
   addTab
 } from 'providers/ReduxStore/slices/tabs';
@@ -400,13 +400,16 @@ const useIpcEvents = () => {
       dispatch(addRequestLogEntries(val));
     });
 
-    const removeMockServerStoreUpdatedListener = ipcRenderer.on('main:mock-server-store-updated', (workspacePath, workspaceUid) => {
-      const state = store.getState();
-      if (state.workspaces.activeWorkspaceUid !== workspaceUid) {
-        return;
-      }
+    const removeMockServerAddedListener = ipcRenderer.on('main:workspace-mock-server-added', (workspaceUid, mockServerFile) => {
+      dispatch(mockServerFileEvent(workspaceUid, mockServerFile));
+    });
 
-      dispatch(syncMockServersFromWorkspaceStore(workspacePath, workspaceUid));
+    const removeMockServerChangedListener = ipcRenderer.on('main:workspace-mock-server-changed', (workspaceUid, mockServerFile) => {
+      dispatch(mockServerFileEvent(workspaceUid, mockServerFile));
+    });
+
+    const removeMockServerDeletedListener = ipcRenderer.on('main:workspace-mock-server-deleted', (workspaceUid, mockServerUid) => {
+      dispatch(mockServerFileDeletedEvent(workspaceUid, mockServerUid));
     });
 
     const removeLoadNotificationsListener = ipcRenderer.on('main:load-notifications', (notifications) => {
@@ -469,7 +472,9 @@ const useIpcEvents = () => {
       gitProgressListener();
       removeMockServerStatusListener();
       removeMockServerRequestLogListener();
-      removeMockServerStoreUpdatedListener();
+      removeMockServerAddedListener();
+      removeMockServerChangedListener();
+      removeMockServerDeletedListener();
       removeLoadNotificationsListener();
     };
   }, [isElectron]);

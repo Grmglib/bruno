@@ -10,8 +10,6 @@ import {
   IconSettings,
   IconTrash
 } from '@tabler/icons';
-import Collection from '../Collection';
-import GitRemoteCollectionRow from '../GitRemoteCollectionRow';
 import ManageCollectionsInGroupModal from './AddCollectionsToGroupModal';
 import StyledWrapper from './StyledWrapper';
 import MenuDropdown from 'ui/MenuDropdown';
@@ -31,22 +29,23 @@ const GROUP_DELETE_MODE = {
   DELETE_ALL: 'delete-all'
 };
 
-const getCollapsedStorageKey = (workspaceUid, groupUid) => {
-  return `bruno:collection-group-collapsed:${workspaceUid}:${groupUid}`;
-};
-
+/**
+ * Header row of a collection group in the (virtualized) sidebar list.
+ * The group's member collections are rendered as regular sidebar rows right after this one;
+ * the collapsed state lives in the list (see useCollapsedGroups) because it affects which rows exist.
+ */
 const CollectionGroup = ({
   group,
-  entries,
+  entryCount = 0,
+  collapsed = false,
+  onCollapsedChange,
   workspaceUid,
   workspaceCollections = [],
   collectionGroups = [],
-  searchText,
   forceExpanded = false
 }) => {
   const dispatch = useDispatch();
   const renameInputRef = useRef();
-  const [collapsed, setCollapsed] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showManageCollectionsModal, setShowManageCollectionsModal] = useState(false);
@@ -69,15 +68,6 @@ const CollectionGroup = ({
   const deleteCollections = groupDeleteMode === GROUP_DELETE_MODE.DELETE_ALL;
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(getCollapsedStorageKey(workspaceUid, group.uid));
-      if (stored === 'true') {
-        setCollapsed(true);
-      }
-    } catch (_) {}
-  }, [workspaceUid, group.uid]);
-
-  useEffect(() => {
     if (showRenameModal && renameInputRef.current) {
       renameInputRef.current.focus();
     }
@@ -86,11 +76,7 @@ const CollectionGroup = ({
   const isExpanded = forceExpanded || !collapsed;
 
   const toggleCollapsed = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    try {
-      localStorage.setItem(getCollapsedStorageKey(workspaceUid, group.uid), String(next));
-    } catch (_) {}
+    onCollapsedChange?.(!collapsed);
   };
 
   const findWorkspaceCollection = useCallback((draggedItem) => {
@@ -164,10 +150,11 @@ const CollectionGroup = ({
   }, [dragGroup, dropReorderTarget]);
 
   useEffect(() => {
+    // Expand a collapsed group while a collection is dragged over it so the drop target is visible
     if (isOverAssignTarget && canAssignToGroup && collapsed) {
-      setCollapsed(false);
+      onCollapsedChange?.(false);
     }
-  }, [isOverAssignTarget, canAssignToGroup, collapsed]);
+  }, [isOverAssignTarget, canAssignToGroup, collapsed, onCollapsedChange]);
 
   const handleRename = () => {
     const trimmed = renameValue.trim();
@@ -218,10 +205,6 @@ const CollectionGroup = ({
   const showAssignDropHighlight = isOverAssignTarget && canAssignToGroup;
   const showReorderDropHighlight = isOverReorderTarget && canReorderGroup;
 
-  if (searchText && entries.length === 0) {
-    return null;
-  }
-
   return (
     <StyledWrapper ref={connectAssignDropRef} data-testid={`collection-group-${group.uid}`}>
       <div
@@ -250,7 +233,7 @@ const CollectionGroup = ({
             />
             <IconFolder size={14} stroke={1.5} className="mr-1 flex-shrink-0" />
             <span className="truncate text-sm font-medium">{group.name}</span>
-            <span className="ml-1 text-xs text-muted">({entries.length})</span>
+            <span className="ml-1 text-xs text-muted">({entryCount})</span>
           </button>
 
           <MenuDropdown
@@ -263,36 +246,6 @@ const CollectionGroup = ({
           </MenuDropdown>
         </div>
       </div>
-
-      {isExpanded && (
-        <div
-          className={classnames('collection-group-children', {
-            'has-entries': entries.length > 0,
-            'drop-target': showAssignDropHighlight && entries.length > 0
-          })}
-        >
-          {entries.length === 0 ? (
-            <div className="empty-drop-zone">
-              <div className="empty-folder-hint text-xs text-muted px-2 py-2">
-                Drop collections here or use Manage collections
-              </div>
-            </div>
-          ) : (
-            entries.map((entry) => {
-              if (entry.kind === 'loaded') {
-                return <Collection searchText={searchText} collection={entry.collection} key={entry.key} />;
-              }
-              return <GitRemoteCollectionRow entry={entry.entry} key={entry.key} />;
-            })
-          )}
-        </div>
-      )}
-
-      {!isExpanded && showAssignDropHighlight && (
-        <div className="collapsed-drop-hint text-xs text-muted px-2 py-1">
-          Release to add to folder
-        </div>
-      )}
 
       {showManageCollectionsModal && (
         <ManageCollectionsInGroupModal

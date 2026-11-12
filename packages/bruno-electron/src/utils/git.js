@@ -1,5 +1,6 @@
 const simpleGit = require('simple-git');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { exec, execFile } = require('child_process');
 const { parseRequest } = require('@usebruno/filestore');
@@ -7,6 +8,11 @@ const { parseRequest } = require('@usebruno/filestore');
 let collectionPathToGitRootPathMap = new Map();
 
 const simpleGitInstances = new Map();
+
+// core.longpaths lifts the 260-char path limit on Windows
+const createSimpleGit = (baseDir) => simpleGit({ baseDir, config: ['core.longpaths=true'] });
+
+const REMOTE_BRANCH_LISTING_TIMEOUT_MS = 10000;
 
 const getGitVersion = () => {
   return new Promise((resolve, reject) => {
@@ -23,7 +29,7 @@ const getGitVersion = () => {
 const getSimpleGitInstanceForPath = (gitRootPath) => {
   let git = simpleGitInstances.get(gitRootPath);
   if (!git) {
-    git = simpleGit(gitRootPath);
+    git = createSimpleGit(gitRootPath);
     simpleGitInstances.set(gitRootPath, git);
   }
   return git;
@@ -174,7 +180,8 @@ const getCollectionGitRepoUrl = async (gitRootPath) => {
         reject(err);
         return;
       }
-      resolve(data.trim());
+      const url = data.trim();
+      resolve(url === 'origin' ? '' : url);
     });
   });
 };
@@ -354,7 +361,7 @@ const getStagedFileDiff = async (gitRootPath, filePath) => {
 
 const getRenamedFileDiff = async (gitRootPath, file) => {
   return new Promise((resolve, reject) => {
-    const git = simpleGit(gitRootPath);
+    const git = createSimpleGit(gitRootPath);
     git.diff(['--staged', '--', file.from, file.to], (err, stagedChanges) => {
       if (err) {
         reject(err);
@@ -849,11 +856,12 @@ const getWorkspaceGitData = async (workspacePath) => {
 
 const cloneGitRepository = async (win, data) => {
   return new Promise((resolve, reject) => {
-    const { url, path, processUid } = data;
+    const { url, path, processUid, branch } = data;
     const git = getSimpleGitInstanceForPath(path);
+    const cloneOptions = branch ? ['--progress', '--branch', branch] : ['--progress'];
 
     git.outputHandler(handleGitOutput({ win, processUid, sendStdout: true }));
-    git.clone(url, path, ['--progress'], (err, res) => {
+    git.clone(url, path, cloneOptions, (err, res) => {
       if (err) {
         reject(err);
         return;
@@ -861,6 +869,47 @@ const cloneGitRepository = async (win, data) => {
       resolve(res);
     });
   });
+};
+
+const parseRemoteBranches = (lsRemoteOutput) => {
+  const branches = [];
+  let defaultBranch = null;
+
+  String(lsRemoteOutput || '')
+    .split(/\r\n|\r|\n/)
+    .forEach((line) => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) return;
+
+      const symrefMatch = trimmedLine.match(/^ref:\s+refs\/heads\/(.+?)\s+HEAD$/);
+      if (symrefMatch) {
+        defaultBranch = symrefMatch[1];
+        return;
+      }
+
+      const branchMatch = trimmedLine.match(/\srefs\/heads\/(.+)$/);
+      if (branchMatch) {
+        branches.push(branchMatch[1]);
+      }
+    });
+
+  return { branches, defaultBranch };
+};
+
+const listBranchesForRemoteUrl = async ({ url }) => {
+  try {
+    const output = await simpleGit({
+      baseDir: os.tmpdir(),
+      timeout: { block: REMOTE_BRANCH_LISTING_TIMEOUT_MS, stdOut: false, stdErr: false }
+    })
+      .env({ ...process.env, GIT_TERMINAL_PROMPT: '0' })
+      .listRemote(['--symref', url, 'HEAD', 'refs/heads/*']);
+
+    return parseRemoteBranches(output);
+  } catch (error) {
+    console.error('Error listing remote branches:', error);
+    throw error;
+  }
 };
 
 const fetchRemotes = (gitRootPath) => {
@@ -1926,6 +1975,8 @@ module.exports = {
   getUnstagedFileDiff,
   getRenamedFileDiff,
   cloneGitRepository,
+  listBranchesForRemoteUrl,
+  parseRemoteBranches,
   fetchChanges,
   fetchRemotes,
   fetchRemoteBranches,

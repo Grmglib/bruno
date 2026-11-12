@@ -1,200 +1,52 @@
-## What's New in Bruno v4.0.0
+## What's New in Bruno v4.4.0
 
-Bruno v4.0.0 is our biggest release yet, with major improvements across the entire API workflow. This release introduces built-in AI assistance, Bruno API Docs and a reimagined Playground, a redesigned Secret Manager, typed variables, Apps, faster startup for large collections, improved WebSocket workflows, and much more.
+### 1Password Secret Manager
 
----
+Bruno now reads secrets from 1Password through the 1Password Connect server. Add a 1Password account in the Secret Manager, pick the vaults to expose, and reference secrets with the same `{{secret.}}` syntax used by Doppler, Infisical and HashiCorp Vault.
 
-### AI-Powered Request Assistance
+![1Password account set up](https://d3icksk7srk4uh.cloudfront.net/4.4.0/1pass.png)
 
-AI is now built directly into your Bruno workflow, helping you work across scripts, tests, and documentation without switching tools.
+### OpenAPI Sync and the API Spec Panel
 
-The new AI chat sidebar stays grounded in your active request, so its responses remain relevant to what you are currently working on.
+* **Connect to an existing spec.** A collection can be linked to a spec that is already in the workspace, without re-importing it.
+* **Choose how requests are named.** Pick summary, operationId, description or path when importing or syncing.
+* **Bulk Import: Check for Spec Updates.** The Bulk Import modal shows which specs have changes since the last sync.
+* **Spec item actions.** Right-click an item in the API Spec panel to generate, reveal, rename, clone or delete.
 
-* Generate scripts and test cases
-* Draft inline request documentation
-* Get autocomplete suggestions in the scripting editor
-* Use your own OpenAI, Anthropic, or OpenAI-compatible endpoint
+![Spec item context menu](https://d3icksk7srk4uh.cloudfront.net/4.4.0/mock-server.png)
 
-Bruno uses a **Bring Your Own Key (BYOK)** model, giving you control over your provider and account.
+### Smarter Variable Autocomplete
 
-![Bruno AI chat sidebar grounded in the active request](https://d3icksk7srk4uh.cloudfront.net/ai.png)
+* **Scope-aware ranking.** OAuth2 credentials are ranked below dynamic variables, and process-env entries stay in the list until explicitly dismissed.
+* **Readable suggestions.** Long variable names are no longer truncated, and the suggestion no longer deletes text after the cursor.
+* **Save as secret, inline.** When a sensitive value is detected in a credential field, Bruno offers to save it as a secret variable from the warning tooltip, in one click.
 
-[Configure AI](#preferences/ai) [Read Docs →](https://link.usebruno.com/docs/ai?version=4.0.0)
+![Save a sensitive value as a secret from the warning tooltip](https://d3icksk7srk4uh.cloudfront.net/4.4.0/secret-values.png)
 
-### Apps: Build Interactive Interfaces for Your APIs
+### Environment Sidebar
 
-Bruno Apps let you build interactive interfaces that connect directly to your APIs.
+* **Multi-select and bulk actions.** Select multiple environments in a collection or global sidebar with the standard shortcuts, then duplicate, delete or move them in one step.
+* **Create from search.** When a search returns no results, the sidebar offers to create an environment with that name.
 
-#### Request-level Apps
+![Environment Multi-select bulk actions](https://d3icksk7srk4uh.cloudfront.net/4.4.0/export-env.png)
 
-Every request now includes an **App** tab. Enable **App Mode** to replace the standard response pane with a custom interface.
+### Collection Runner at Scale
 
-Request-level Apps can:
+The runner no longer freezes the app when started with high iteration counts. The Include and Exclude tag filters have been reworked so they read as a single list, and folder-level tags are matched the same way as request tags.
 
-* Trigger their parent request with custom variables
-* Read the response body and headers
-* Access the response status and duration
-* Display test results
+![Collection Runner Include and Exclude tag](https://d3icksk7srk4uh.cloudfront.net/4.4.0/collection-runner.png)
 
-#### Collection-level Apps
+### Mock Servers
 
-You can also create standalone Apps within a collection.
+* **CORS preflight accepts custom headers.** Browser flows that rely on header-based routing now reach the mock.
+* **No lost edits.** Unsaved mock-response edits survive a tab switch, and Edit mode is kept until the user saves or discards.
+* **Disabled means read-only.** Disabling a mock server also disables editing of its responses.
+* **Create from Spec, validated.** The dialog rejects invalid files and produces complete bodies for valid Swagger 2.0 specs.
 
-Collection-level Apps can:
 
-* Find and trigger requests by name or path
-* Pass variables into requests
-* Chain multiple requests together
-* Read environment and collection variables
-* Open in their own tabs
+### Git
 
-App code and state are stored alongside your requests and collections, making them easy to share through Git.
-
-![Bruno Apps building an interactive interface on top of an API](https://d3icksk7srk4uh.cloudfront.net/apps.png)
-
-[Read Docs →](https://link.usebruno.com/docs/apps?version=4.0.0)
-
-### Secrets Management, Fully Rebuilt
-
-The Secret Manager has been completely redesigned.
-
-Secret mappings now live alongside your environments instead of being stored in a separate `secrets.json` file. This makes secrets behave consistently with the rest of Bruno's environment system.
-
-* Unified experience for environments and secrets
-* Improved sharing and variable precedence
-* Simpler setup for external secret providers
-* Existing secrets are automatically migrated
-
-![Redesigned Secret Manager in Bruno](https://d3icksk7srk4uh.cloudfront.net/secret-manager.png)
-
-[Read Docs →](https://link.usebruno.com/docs/secret-manager?version=4.0.0)
-
-### Descriptions for Variables and Request Fields
-
-A new description column is available for:
-
-* Variables
-* Query and path parameters
-* Headers
-* Multipart form data
-* URL-encoded request bodies
-
-Descriptions support multiple lines and are preserved when importing or exporting collections, including descriptions from Postman and OpenAPI.
-
-This makes it easier to explain what each field does without relying on inline comments or separate documentation.
-
-![Description column for variables and request fields in Bruno](https://d3icksk7srk4uh.cloudfront.net/descriptions.png)
-
-### Bruno API Docs
-
-Bruno API Docs now provide a modern, website-like documentation experience with improved navigation, richer request details, and shareable pages.
-
-* Shareable page URLs
-* Global documentation search
-* New design system
-* Support for light and dark themes
-* Redesigned navigation sidebar
-* Variable types and resolved-value previews
-* Execution context for requests, folders, and collections
-
-The interactive **Playground** is also much closer to the full Bruno experience. You can execute requests directly from your documentation using a redesigned application shell with broader request support.
-
-[Read Docs →](https://link.usebruno.com/docs/collection-docs?version=4.0.0)
-
-### Typed Variables and Better Scripting
-
-Variables now support native data types across collections, environments, folders, and requests.
-
-Instead of storing every value as a string, Bruno can now preserve:
-
-* Strings
-* Numbers
-* Booleans
-* Objects
-
-This reduces the need to manually serialize and deserialize values when working with structured data in scripts.
-
-Additional scripting improvements include:
-
-* Variable mutations now persist by default
-* New APIs for reading and managing collection variables
-
-[Read Docs →](https://link.usebruno.com/docs/variables?version=4.0.0)
-
-### More Authentication Options <span class="badge">Beta</span>
-
-Bruno now includes native support for **Akamai EdgeGrid authentication**.
-
-Select Akamai EdgeGrid from the authentication type dropdown on a request, folder, or collection.
-
-![Akamai EdgeGrid authentication configuration in Bruno](https://d3icksk7srk4uh.cloudfront.net/akamai-edgegrid-auth.png)
-
-[Read Docs →](https://link.usebruno.com/docs/auth?version=4.0.0)
-
-### Faster Startup for Large Collections <span class="badge">Beta</span>
-
-Bruno can now cache parsed collection data across sessions, significantly improving startup times for large collections and workspaces.
-
-[Enable File Cache](#preferences/cache)
-
-### Better WebSocket Workflows
-
-WebSocket requests now support multiple saved messages within the same connection.
-
-You can create and manage a collection of messages, then send them individually without repeatedly recreating payloads.
-
-[Read Docs →](https://link.usebruno.com/docs/websocket?version=4.0.0)
-
-### A Better Changelog and Notification Experience
-
-Each Bruno update now has a dedicated Changelog page that opens in a new tab after upgrading.
-
-Notifications have also been redesigned to focus on:
-
-* Product announcements
-* Feature discovery
-* Important Bruno updates
-
-### OpenCollection YAML: The Future of Bruno
-
-Bruno is beginning its transition from the legacy `.bru` format to the **OpenCollection YAML** format.
-
-OpenCollection YAML provides a readable, portable, and ecosystem-friendly format for storing API collections.
-
-As part of this transition:
-
-* The `.bru` format is now deprecated
-* Existing `.bru` collections will continue to work
-* We plan to support the format for at least the next 12 months
-* New features will continue to work in both BRU and YAML during the transition
-* A guided in-app migration flow will be available in the upcoming versions to help you migrate your collections
-
-[Read Docs →](https://link.usebruno.com/docs/opencollection?version=4.0.0)
-
-### CLI Improvements
-
-The Bruno CLI now supports the redesigned Secret Manager, including native integrations with:
-
-* AWS Secrets Manager
-* Azure Key Vault
-* HashiCorp Vault
-
-This release also includes JUnit reporting fixes and improved support for YAML-based gRPC collections.
-
-[Read Docs →](https://link.usebruno.com/docs/cli?version=4.0.0)
-
-### Quality Improvements Across Bruno
-
-Bruno v4.0.0 also includes dozens of fixes and workflow improvements across the Desktop app, CLI, API Docs, imports, and the wider Bruno ecosystem.
-
-Highlights include:
-
-* Better path parameter handling
-* Improved Postman import fidelity
-* UI and usability improvements throughout the application
-* Documentation rendering fixes
-* Improved performance and stability
-* Bug fixes across Desktop, CLI, and API Docs
+GitHub SAML SSO failures on push and pull now show the actual error from GitHub and a link to authorise the token, imports no longer fail when the repository contains a very long file path, and the "Pull from other branches" modal uses consistent CTAs.
 
 ---
 

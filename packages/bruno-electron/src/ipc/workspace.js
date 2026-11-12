@@ -7,9 +7,12 @@ const { ipcMain, dialog } = require('electron');
 const isDev = require('electron-is-dev');
 const {
   createDirectory,
+  isDirectory,
+  mkdirUnique,
   sanitizeName,
   writeFile,
   DEFAULT_GITIGNORE,
+  removeGitMetadata,
   searchForRequestFiles
 } = require('../utils/filesystem');
 const yaml = require('js-yaml');
@@ -80,19 +83,19 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) =
     async (event, workspaceName, workspaceFolderName, workspaceLocation) => {
       try {
         workspaceFolderName = sanitizeName(workspaceFolderName);
-        const dirPath = path.join(workspaceLocation, workspaceFolderName);
 
-        if (fs.existsSync(dirPath)) {
-          const files = fs.readdirSync(dirPath);
-          if (files.length > 0) {
-            throw new Error(`workspace: ${dirPath} already exists and is not empty`);
-          }
-        }
+        validateWorkspaceDirectory(workspaceFolderName);
 
-        validateWorkspaceDirectory(dirPath);
+        const desiredPath = path.join(workspaceLocation, workspaceFolderName);
 
-        if (!fs.existsSync(dirPath)) {
+        let dirPath;
+        if (!fs.existsSync(desiredPath)) {
+          dirPath = desiredPath;
           await createDirectory(dirPath);
+        } else if (isDirectory(desiredPath) && fs.readdirSync(desiredPath).length === 0) {
+          dirPath = desiredPath;
+        } else {
+          ({ pathname: dirPath } = await mkdirUnique(workspaceLocation, workspaceFolderName));
         }
 
         await createDirectory(path.join(dirPath, 'collections'));
@@ -523,7 +526,7 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) =
             const entryArchivePath = archivePath ? path.join(archivePath, entry.name) : entry.name;
 
             if (entry.isDirectory()) {
-              if (!ignoredDirectories.includes(entry.name)) {
+              if (!ignoredDirectories.includes(entry.name.toLowerCase())) {
                 addDirectoryToArchive(fullPath, entryArchivePath);
               }
             } else {
@@ -557,6 +560,7 @@ const registerWorkspaceIpc = (mainWindow, workspaceWatcher, collectionWatcher) =
 
       try {
         await extractZip(zipFilePath, { dir: tempDir });
+        await removeGitMetadata(tempDir);
 
         const extractedItems = fs.readdirSync(tempDir);
         let workspaceDir = tempDir;

@@ -46,6 +46,8 @@ const AppPreviewKeepAlive = () => {
       for (const collection of draft) {
         collection.globalEnvironmentVariables = globalEnvironmentVariables;
         collection.globalEnvSecrets = globalEnvSecrets;
+        collection.globalEnvironments = globalEnvironments;
+        collection.activeGlobalEnvironmentUid = activeGlobalEnvironmentUid;
       }
     });
   }, [_collections, globalEnvironments, activeGlobalEnvironmentUid]);
@@ -98,6 +100,7 @@ const AppPreviewKeepAlive = () => {
           <div
             key={tabUid}
             className={`app-preview-slot ${isActive ? 'active' : ''}`}
+            data-testid="app-preview-slot"
             aria-hidden={!isActive}
           >
             <TabPanelErrorBoundary tabUid={tabUid}>

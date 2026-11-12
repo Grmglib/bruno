@@ -5,13 +5,15 @@ import get from 'lodash/get';
 import StyledWrapper from './StyledWrapper';
 import { formatSize } from 'utils/common/index';
 import Button from 'ui/Button/index';
+import { MAX_RENDERABLE_RESPONSE_BYTES } from 'utils/common/constants';
 
 const LargeResponseWarning = ({ item, responseSize, estimatedLineCount, onRevealResponse }) => {
   const { ipcRenderer } = window;
   const response = item.response || {};
+  const isDownloadOnly = responseSize > MAX_RENDERABLE_RESPONSE_BYTES;
 
   const downloadResponseToFile = () => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       ipcRenderer
         .invoke('renderer:save-response-to-file', response, item.requestSent.url, item.pathname)
         .then((result) => {
@@ -22,7 +24,7 @@ const LargeResponseWarning = ({ item, responseSize, estimatedLineCount, onReveal
         })
         .catch((err) => {
           toast.error(get(err, 'error.message') || 'Something went wrong!');
-          reject(err);
+          resolve();
         });
     });
   };
@@ -63,8 +65,20 @@ const LargeResponseWarning = ({ item, responseSize, estimatedLineCount, onReveal
                 Estimated lines: <span className="size-highlight current-size">{estimatedLineCount.toLocaleString()}</span>
               </>
             ) : null}
-            <br />
-            Opening this response will use a simplified viewer to keep Bruno responsive.
+            {isDownloadOnly ? null : (
+              <>
+                <br />
+                Opening this response will use a simplified viewer to keep Bruno responsive.
+              </>
+            )}
+            {isDownloadOnly ? (
+              <>
+                <br />
+                <span data-testid="large-response-download-only">
+                  Responses over <span className="size-highlight">{formatSize(MAX_RENDERABLE_RESPONSE_BYTES)}</span> can only be downloaded.
+                </span>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -73,7 +87,9 @@ const LargeResponseWarning = ({ item, responseSize, estimatedLineCount, onReveal
           icon={<IconEye size={18} strokeWidth={1.5} />}
           iconPosition="left"
           onClick={onRevealResponse}
-          title="Show raw response content"
+          disabled={isDownloadOnly}
+          data-testid="large-response-view"
+          title="Show response content"
           color="secondary"
           size="sm"
         >
@@ -83,7 +99,8 @@ const LargeResponseWarning = ({ item, responseSize, estimatedLineCount, onReveal
           icon={<IconDownload size={18} strokeWidth={1.5} />}
           iconPosition="left"
           onClick={downloadResponseToFile}
-          disabled={!response.dataBuffer}
+          disabled={!response.dataBuffer && !response.storedRequestUid}
+          data-testid="large-response-download"
           title="Download response to file"
           color="secondary"
           size="sm"
@@ -94,7 +111,8 @@ const LargeResponseWarning = ({ item, responseSize, estimatedLineCount, onReveal
           icon={<IconCopy size={18} strokeWidth={1.5} />}
           iconPosition="left"
           onClick={copyResponse}
-          disabled={!response.data}
+          disabled={isDownloadOnly || !response.data}
+          data-testid="large-response-copy"
           title="Copy response to clipboard"
           color="secondary"
           size="sm"

@@ -36,6 +36,7 @@ const actionsToIntercept = [
   'collections/updateRequestGraphqlVariables',
   'collections/updateRequestScript',
   'collections/updateResponseScript',
+  'collections/updateGrpcScript',
   'collections/updateRequestTests',
   'collections/updateRequestMethod',
   'collections/addAssertion',
@@ -74,6 +75,8 @@ const actionsToIntercept = [
   'collections/updateFolderAuth',
   'collections/updateFolderAuthMode',
   'collections/updateFolderDocs',
+  'collections/addFolderTag',
+  'collections/deleteFolderTag',
 
   // Collection-level actions
   'collections/addCollectionHeader',

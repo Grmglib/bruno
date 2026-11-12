@@ -5,6 +5,7 @@ const isDev = require('electron-is-dev');
 const os = require('os');
 const { initializeShellEnv, waitForShellEnv } = require('./store/shell-env-state');
 const { percentageToZoomLevel } = require('@usebruno/common');
+const { isBenchmarkEnabled } = require('./utils/benchmark');
 
 if (isDev) {
   if (!fs.existsSync(path.join(__dirname, '../../bruno-js/src/sandbox/bundle-browser-rollup.js'))) {
@@ -14,9 +15,12 @@ if (isDev) {
   }
 }
 
-const { format } = require('url');
 const { BrowserWindow, app, session, Menu, globalShortcut, ipcMain, nativeTheme, shell } = require('electron');
 const { setContentSecurityPolicy } = require('electron-util');
+const { getAppUrl, isAppUrl, restrictIpcToAppFrames } = require('./utils/trusted-url');
+
+// NOTE(security): Must run before any ipcMain.handle/on registration below.
+restrictIpcToAppFrames(ipcMain);
 
 if (isDev && process.env.ELECTRON_USER_DATA_PATH) {
   console.debug('`ELECTRON_USER_DATA_PATH` found, modifying `userData` path: \n'
@@ -31,6 +35,10 @@ if (os.platform() === 'linux') {
   // to address https://github.com/usebruno/bruno/issues/5471
   // Runtime sets the default version to 3, refs https://github.com/electron/electron/pull/44426
   app.commandLine.appendSwitch('xdg-portal-required-version', '4');
+}
+
+if (isBenchmarkEnabled()) {
+  app.commandLine.appendSwitch('enable-precise-memory-info');
 }
 
 const menuTemplate = require('./app/menu-template');
@@ -51,6 +59,10 @@ const registerAiIpc = require('./ipc/ai');
 const registerAiAutocompleteIpc = require('./ipc/ai/autocomplete');
 const { registerMountIpc } = require('./ipc/mount');
 const { registerSqliteIpc } = require('./ipc/sqlite');
+const sqliteService = require('./services/sqlite');
+const { clearAllRunnerResponses } = require('./services/runner-exchange');
+const { transientManager } = require('./services/transient');
+const { registerWsdlIpc } = require('./ipc/wsdl');
 const collectionWatcher = require('./app/collection-watcher');
 const WorkspaceWatcher = require('./app/workspace-watcher');
 const ApiSpecWatcher = require('./app/apiSpecsWatcher');
@@ -60,6 +72,8 @@ const { globalEnvironmentsManager } = require('./store/workspace-environments');
 const registerNotificationsIpc = require('./ipc/notifications');
 const registerGlobalEnvironmentsIpc = require('./ipc/global-environments');
 const registerIconsIpc = require('./ipc/icons');
+const registerAppDocumentIpc = require('./ipc/app-document');
+const AppDocuments = require('./app/app-documents');
 const TerminalManager = require('./ipc/terminal');
 const { safeParseJSON, safeStringifyJSON } = require('./utils/common');
 const { getDomainsWithCookies } = require('./utils/cookies');
@@ -70,9 +84,14 @@ const { handleAppProtocolUrl, getAppProtocolUrlFromArgv } = require('./utils/dee
 
 const systemMonitor = new SystemMonitor();
 const terminalManager = new TerminalManager();
+const { startBenchmark, stopBenchmark } = require('./benchmark');
 
 const workspaceWatcher = new WorkspaceWatcher();
 const apiSpecWatcher = new ApiSpecWatcher();
+const appDocuments = new AppDocuments();
+
+// Scheme privileges are only honoured when registered before `app.ready`.
+AppDocuments.registerScheme();
 
 // Reference: https://content-security-policy.com/
 const contentSecurityPolicy = [
@@ -190,6 +209,9 @@ if (useSingleInstance && !gotTheLock) {
 // Prepare the renderer once the app is ready
 app.on('ready', async () => {
   initializeShellEnv();
+  await transientManager.clearStale();
+
+  startBenchmark();
 
   if (isDev) {
     const { installExtension, REDUX_DEVTOOLS, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
@@ -338,7 +360,7 @@ app.on('ready', async () => {
       width: 350,
       height: 250,
       webPreferences: {
-        nodeIntegration: true
+        nodeIntegration: false
       }
     });
     aboutWindow.removeMenu();
@@ -354,14 +376,7 @@ app.on('ready', async () => {
     }
     mainWindow.show();
   });
-  const devPort = process.env.BRUNO_DEV_PORT || 3000;
-  const url = isDev
-    ? `http://localhost:${devPort}`
-    : format({
-        pathname: path.join(__dirname, '../web/index.html'),
-        protocol: 'file:',
-        slashes: true
-      });
+  const url = getAppUrl();
 
   mainWindow.loadURL(url).catch((reason) => {
     console.error(`Error: Failed to load URL: "${url}" (Electron shows a blank screen because of this).`);
@@ -417,11 +432,30 @@ app.on('ready', async () => {
     ipcMain.emit('main:start-quit-flow');
   });
 
+  // The window must only ever show the app's own document: any other target
+  // (e.g. a link in a schema description or AI reply) would inherit the preload
+  // bridge. Block it and hand http(s) URLs to the system browser.
+  const guardNavigation = (event, url) => {
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    if (/^(http:\/\/|https:\/\/)/.test(url)) {
+      shell.openExternal(url).catch((err) => console.error('Failed to open external URL:', err));
+    }
+  };
+  mainWindow.webContents.on('will-navigate', guardNavigation);
+  mainWindow.webContents.on('will-frame-navigate', guardNavigation);
   mainWindow.webContents.on('will-redirect', (event, url) => {
     event.preventDefault();
     if (/^(http:\/\/|https:\/\/)/.test(url)) {
-      require('electron').shell.openExternal(url);
+      shell.openExternal(url).catch((err) => console.error('Failed to open external URL:', err));
     }
+  });
+
+  // Guests (HTML preview, app views) must never get the preload bridge or Node.
+  mainWindow.webContents.on('will-attach-webview', (event, webPreferences) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
   });
 
   mainWindow.webContents.once('did-finish-load', () => {
@@ -447,7 +481,12 @@ app.on('ready', async () => {
           autoHideMenuBar: true,
           // No OS title bar, the chat header is the drag region and carries
           // its own close/dock controls.
-          frame: false
+          frame: false,
+          webPreferences: {
+            preload: '',
+            nodeIntegration: false,
+            contextIsolation: true
+          }
         }
       };
     }
@@ -529,7 +568,12 @@ app.on('ready', async () => {
   registerAiIpc(mainWindow);
   registerAiAutocompleteIpc(mainWindow);
   registerMountIpc();
-  registerSqliteIpc(mainWindow);
+  sqliteService.openDatabase();
+  clearAllRunnerResponses().catch((err) => console.warn('[runner] failed to clear stored responses', err));
+  registerSqliteIpc();
+  appDocuments.handleProtocol();
+  registerAppDocumentIpc(appDocuments, mainWindow);
+  registerWsdlIpc();
 
   // Internal delegator
   ipcMain.handle('main:cache-clear', async () => {
@@ -551,6 +595,12 @@ app.on('before-quit', (event) => {
 
   (async () => {
     try {
+      await stopBenchmark();
+    } catch (err) {
+      console.error('[benchmark] Failed to stop benchmark writer:', err);
+    }
+
+    try {
       await Promise.race([
         closeAllWatchers(),
         // Cap the wait so a stuck watcher can't block exit indefinitely.
@@ -558,9 +608,13 @@ app.on('before-quit', (event) => {
       ]);
     } catch {}
 
-    try { await require('./ipc/mount').shutdown(); } catch { }
+    try { await require('./ipc/mount').shutdown({ force: true }); } catch { }
 
-    try { require('./ipc/sqlite').shutdown(); } catch {}
+    try { await clearAllRunnerResponses(); } catch {}
+
+    try { await sqliteService.reclaimDiskSpace(); } catch {}
+
+    try { sqliteService.shutdown(); } catch {}
 
     if (useSingleInstance && gotTheLock) {
       try { app.releaseSingleInstanceLock(); } catch {}

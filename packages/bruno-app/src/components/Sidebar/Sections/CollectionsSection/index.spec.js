@@ -33,7 +33,7 @@ jest.mock('components/Sidebar/ImportCollection', () => () => null);
 jest.mock('components/Sidebar/ImportCollectionLocation', () => () => null);
 jest.mock('components/Sidebar/BulkImportCollectionLocation', () => () => null);
 jest.mock('components/Sidebar/CloneGitRespository', () => () => null);
-jest.mock('components/Sidebar/Collections/RemoveCollectionsModal/index', () => () => null);
+jest.mock('components/Sidebar/Collections/Collection/RemoveCollections/index', () => () => null);
 jest.mock('components/Sidebar/CreateCollection', () => () => null);
 jest.mock('components/Sidebar/PostmanPackageReport', () => () => null);
 jest.mock('components/WelcomeModal', () => () => null);

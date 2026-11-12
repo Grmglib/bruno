@@ -28,9 +28,13 @@ const electronDir = path.join(rootDir, 'packages/bruno-electron');
 
 let electronProcess = null;
 let detectedPort = null;
+let electronStarted = false;
 
-// Regex to match rsbuild's local URL output (e.g., "➜ Local:    http://localhost:3000/")
+// Regex to match rsbuild's local URL output (e.g., "➜ Local:    http://localhost:3000/").
+// Rsbuild wraps the label and URL in ANSI colors, so strip those before matching.
 const portRegex = /Local:\s+http:\/\/localhost:(\d+)/;
+const stripAnsi = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
+let outputBuffer = '';
 
 console.log(`\n${colors.bright}${colors.yellow}🚀 Starting Bruno development environment...${colors.reset}\n`);
 
@@ -41,24 +45,30 @@ const webProcess = spawn('npm', ['run', 'dev'], {
   shell: true
 });
 
-webProcess.stdout.on('data', (data) => {
-  const output = data.toString();
-  process.stdout.write(output);
+const onWebOutput = (chunk, stream) => {
+  const output = chunk.toString();
+  stream.write(output);
+  if (electronStarted) return;
 
-  // Try to detect the port from rsbuild output
+  outputBuffer = `${outputBuffer}${stripAnsi(output)}`.slice(-500);
   if (!detectedPort) {
-    const match = output.match(portRegex);
+    const match = outputBuffer.match(portRegex);
     if (match) {
       detectedPort = match[1];
       log.success(`Detected dev server on port ${colors.bright}${detectedPort}${colors.reset}`);
-      startElectron(detectedPort);
     }
   }
-});
 
-webProcess.stderr.on('data', (data) => {
-  process.stderr.write(data.toString());
-});
+  // Rsbuild prints the URL before the bundle exists. Opening Electron then
+  // leaves a blank window until "built in …" shows up.
+  if (detectedPort && /built in /.test(outputBuffer)) {
+    electronStarted = true;
+    startElectron(detectedPort);
+  }
+};
+
+webProcess.stdout.on('data', (data) => onWebOutput(data, process.stdout));
+webProcess.stderr.on('data', (data) => onWebOutput(data, process.stderr));
 
 webProcess.on('close', (code) => {
   log.info(`Web process exited with code ${code}`);

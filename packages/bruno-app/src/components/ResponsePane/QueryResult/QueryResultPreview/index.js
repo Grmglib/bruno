@@ -17,6 +17,7 @@ import TextPreview from './TextPreview';
 import HtmlPreview from './HtmlPreview';
 import VideoPreview from './VideoPreview';
 import JsonPreview from './JsonPreview';
+import { resolveLinkClickHandler } from 'utils/codemirror/linkClickHandler';
 
 const LIGHTWEIGHT_VIRTUALIZE_LINE_THRESHOLD = 500;
 const LONG_LINE_CHUNK_SIZE = 2000;
@@ -224,6 +225,12 @@ const QueryResultPreview = ({
 
   const onSave = () => dispatch(saveRequest(item.uid, collection.uid));
 
+  // Same type as the request this response belongs to (HTTP -> HTTP, GraphQL -> GraphQL).
+  const handleResponseLinkClick = useMemo(
+    () => resolveLinkClickHandler(item, collection),
+    [item, collection]
+  );
+
   if (selectedTab === 'editor') {
     if (useSimplifiedView) {
       return (
@@ -252,6 +259,7 @@ const QueryResultPreview = ({
         mode={codeMirrorMode}
         initialScroll={responseScroll}
         onScroll={setResponseScroll}
+        onLinkClick={handleResponseLinkClick}
         readOnly
       />
     );
@@ -285,7 +293,7 @@ const QueryResultPreview = ({
       return <VideoPreview contentType={contentType} dataBuffer={dataBuffer} />;
     }
     case 'preview-json': {
-      return <JsonPreview data={data} displayedTheme={displayedTheme} />;
+      return <JsonPreview data={data} displayedTheme={displayedTheme} onLinkClick={handleResponseLinkClick} />;
     }
 
     case 'preview-text': {
@@ -302,11 +310,11 @@ const QueryResultPreview = ({
         );
       }
 
-      return <TextPreview data={data} />;
+      return <TextPreview data={data} onLinkClick={handleResponseLinkClick} />;
     }
 
     case 'preview-xml': {
-      return <XmlPreview data={data} />;
+      return <XmlPreview data={data} onLinkClick={handleResponseLinkClick} />;
     }
 
     default:
